@@ -1,5 +1,5 @@
 # Research
-## Author :
+## Author 
 ### Yuki Kawawaki, Master 1st, Department of Mechanical Engineering, the University of Tokyo 
 ## Tracking code
 ### BGS(Back Ground Subtraction)
