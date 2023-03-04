@@ -16,8 +16,13 @@
 #### TCN
 ### Prediction with Image data
 #### CNN
+#### LSTM
+#### Dense
 #### Heatmap
 ### Prediction with Image and Value data
+### CNN
+### LSTM
+### Dense
 ## Cotrol Method
 ### Feedback Control with Observer
 ### Robust Control
