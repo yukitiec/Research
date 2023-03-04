@@ -10,6 +10,7 @@
 ### Optical flow
 ### Template Matching
 ### YOLOv7
+### Kalman Filter
 ## Prediction odel with Machine Learning
 ### Prediction with Value data
 #### NN (Neural Network)
