@@ -17,6 +17,7 @@
 ### Prediction with Image data
 #### CNN
 #### Heatmap
+### Prediction with Image and Value data
 ## Cotrol Method
 ### Feedback Control with Observer
 ### Robust Control
