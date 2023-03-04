@@ -1,6 +1,7 @@
 # Research
 ## Author 
-### Yuki Kawawaki, Master 1st, Department of Mechanical Engineering, the University of Tokyo 
+### Yuki Kawawaki, Master 1st, Yamakawa Laboratory, Department of Mechanical Engineering, the University of Tokyo 
+### http://www.hfr.iis.u-tokyo.ac.jp/index-j.html
 ## Tracking code
 ### BGS(Background Subtraction)
 ### Marker Tracking
