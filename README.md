@@ -1,5 +1,6 @@
 # Research
-# Author : Yuki Kawawaki, Master 1st, Department of Mechanical Engineering, the University of Tokyo 
+## Author :
+### Yuki Kawawaki, Master 1st, Department of Mechanical Engineering, the University of Tokyo 
 ## Tracking code
 ### BGS(Back Ground Subtraction)
 ### Marker Tracking
@@ -19,6 +20,8 @@
 ### Feedback Control with Observer
 ### Robust Control
 ### Open Loop Control
+## Simulation
+### Vibration of Beam
 ## Utility
 ### Move File
 ### Merge Images
