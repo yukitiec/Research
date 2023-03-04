@@ -2,14 +2,14 @@
 ## Author 
 ### Yuki Kawawaki, Master 1st, Yamakawa Laboratory, Department of Mechanical Engineering, the University of Tokyo 
 ### http://www.hfr.iis.u-tokyo.ac.jp/index-j.html
-## Tracking code
+## Tracking 
 ### BGS(Background Subtraction)
 ### Marker Tracking
 ### ColorTracking
 ### Optical flow
 ### Template Matching
 ### YOLOv7
-## Prediction model with Machine Learning
+## Prediction odel with Machine Learning
 ### Prediction with Value data
 #### LSTM
 #### Dense
