@@ -20,9 +20,9 @@
 #### Dense
 #### Heatmap
 ### Prediction with Image and Value data
-### CNN
-### LSTM
-### Dense
+#### CNN
+#### LSTM
+#### Dense
 ## Cotrol Method
 ### Feedback Control with Observer
 ### Robust Control
