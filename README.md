@@ -28,7 +28,7 @@
 ### Merge Images
 ## Appendix
 ### Tracking
-#### Ball Tracking by YOLO : TrackingVideo_YOLOv7.mp4
+#### Tracking by YOLO : TrackingVideo_YOLOv7.mp4
 #### Ball Tracking by YOLO and Optical Flow : BallTracking_YOLO_OpticalFlow.mp4
 ### Prediction Result with Image data 
 #### testData_Plot.png
