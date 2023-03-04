@@ -12,18 +12,21 @@
 ### YOLOv7
 ## Prediction odel with Machine Learning
 ### Prediction with Value data
-#### LSTM
-#### Dense
-#### TCN
+#### NN (Neural Network)
+#### LSTM (Long-Short Term Memory)
+#### TCN (Temporal Convolutional Network)
+#### Attention 
 ### Prediction with Image data
-#### CNN
+#### CNN (Convolutional Neural Network)
+#### NN
 #### LSTM
-#### Dense
+#### Attention
 #### Heatmap
 ### Prediction with Image and Value data
 #### CNN
+#### NN
 #### LSTM
-#### Dense
+#### Attention
 ## Cotrol Method
 ### Feedback Control with Observer
 ### Robust Control
