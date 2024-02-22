@@ -162,7 +162,6 @@ namespace cv {
 
             Point delta_xy;
             double PSR = correlate(image_sub, delta_xy);
-            //previous_psr = PSR;
             if (PSR < psrThreshold)
                 return PSR;
 
@@ -178,13 +177,12 @@ namespace cv {
                     vel_previous = (double)(std::pow((std::pow(previous_move[0], 2) + std::pow(previous_move[1], 2)), 0.5));
                     if (vel_current >= MIN_MOVE_MOSSE || vel_previous >= MIN_MOVE_MOSSE)
                     {
-                        //if (std::abs(vel_current - vel_previous) >= move_threshold) count_skip_condition++; //check velocity difference
                         double cosine = (delta_xy.x * (double)previous_move[0] + delta_xy.y * (double)previous_move[1]) / (vel_current * vel_previous); //calculate move successiveness
                         if (cosine <= angle_threshold) count_skip_condition++; //check motion change
+                        //if (std::abs(vel_current - vel_previous) >= move_threshold) count_skip_condition++; //check velocity difference
                     }
-                    
                     delta_psr = previous_psr - PSR; //change of psr
-                    if ((delta_psr >= delta_psr_threshold && PSR>=MIN_PSR_SKIP) ||count_skip_condition == 1)
+                    if ((delta_psr >= delta_psr_threshold && PSR <= MIN_PSR_SKIP) || count_skip_condition == 1)
                     {
                         std::cout << "MOSSE  : : skip updating" << std::endl;
                         counter_skip++;
@@ -192,6 +190,11 @@ namespace cv {
                         boundingBox.y = boundingBox.y + (double)previous_move[1];
                         return PSR;
                     }
+                }
+                else if (counter_skip > MAX_SKIP && PSR < threshold_mosse) //fail to track
+                {
+                    previous_psr = 0.0;
+                    return 0.0; //fault
                 }
             }
             //std::cout << "deltaX=" << delta_xy.x << ", deltaY=" << delta_xy.y << std::endl;

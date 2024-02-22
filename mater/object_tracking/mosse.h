@@ -31,11 +31,11 @@ namespace cv {
             Mat randWarp(const Mat& a) const;
 
 
-            const double move_threshold = 0;//accelerate abruptly
-            const double angle_threshold = 0.0; //change direction abruptly :: 90 degree
-            const double delta_psr_threshold = 2.0; //psr delta threshold
-            const double MIN_MOVE_MOSSE = 2; //min move
-            const double MIN_PSR_SKIP = 3.0;//threshold_mosse; //for psr skipping condition
+            const double move_threshold = 30;//accelerate abruptly
+            const double angle_threshold = 0.5; //change direction abruptly :: 90 degree
+            const double delta_psr_threshold = 5; //psr delta threshold
+            const double MIN_MOVE_MOSSE = 1; //min move
+            const double MIN_PSR_SKIP = 5.0;//threshold_mosse; //for psr skipping condition
             const int MAX_SKIP = 3; //max number of skip
         public:
             double previous_psr = 0.0;

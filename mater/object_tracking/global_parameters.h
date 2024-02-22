@@ -1,143 +1,91 @@
 #pragma once
 
-
 #ifndef GLOBAL_PARAMETERS_H
 #define GLOBAL_PARAMETERS_H
 
 #include "stdafx.h"
 #include "mosse.h"
 
-extern const bool boolGroundTruth = false;
-//video path
-extern const std::string filename_left = "switching2_0111_left.mp4";
-extern const std::string filename_right = "switching2_0111_right.mp4";
-// camera : constant setting
-extern const int LEFT_CAMERA = 0;
-extern const int RIGHT_CAMERA = 1;
-extern const int FPS = 400;
-// YOLO label
-extern const int BALL = 0;
-extern const int BOX = 1;
-// tracker
-extern const double threshold_mosse = 5.0;//0.57; //PSR threshold
+std::mutex mtxRobot, mtxYolo_left, mtxYolo_right;
+/* queueu definition */
+/* frame queue */
+std::queue<std::array<cv::Mat1b, 2>> queueFrame;
+std::queue<int> queueFrameIndex;
+/* yolo and optical flow */
+/* left */
+std::queue<std::vector<std::vector<cv::Ptr<cv::mytracker::TrackerMOSSE>>>> queueYoloTracker_left;      // queue for old image for optical flow. vector size is [num human,6]
+std::queue<std::vector<std::vector<cv::Mat1b>>> queueYoloTemplate_left; // queue for yolo template       // queue for old image for optical flow. vector size is [num human,6]
+std::queue<std::vector<std::vector<cv::Rect2i>>> queueYoloRoi_left;        // queue for search roi for optical flow. vector size is [num human,6]
+std::queue<std::vector<std::vector<cv::Ptr<cv::mytracker::TrackerMOSSE>>>> queueMosseTracker_left;
+std::queue<std::vector<std::vector<cv::Rect2i>>> queueRoi_left;          // queue for search roi for optical flow. vector size is [num human,6]
+std::queue<std::vector<std::vector<cv::Mat1b>>> queueTemplate_left;
+std::queue<std::vector<std::vector<bool>>> queueScale_left; //search area scale
+std::queue<std::vector<std::vector<std::vector<int>>>> queueMoveLeft; //queue for saving previous move
 
-//Kalman filter setting
-extern const double INIT_X = 0.0;
-extern const double INIT_Y = 0.0;
-extern const double INIT_VX = 0.0;
-extern const double INIT_VY = 0.0;
-extern const double INIT_AX = 0.0;
-extern const double INIT_AY = 9.81;
-extern const double NOISE_POS = 0.1;
-extern const double NOISE_VEL = 1.0;
-extern const double NOISE_ACC = 1.0;
-extern const double NOISE_SENSOR = 0.1;
-// tracking
-extern const int COUNTER_VALID = 4; //frames by official tracker
-extern const int COUNTER_LOST = 4; //frames by deleting tracker
-extern const float MAX_ROI_RATE = 2.0; //max change of roi
-extern const float MIN_ROI_RATE = 0.5; //minimum change of roi
-extern const double MIN_IOU = 0.1; //minimum IoU for identity
-extern const double MAX_RMSE = 30; //max RMSE for identity
+/* right */
+std::queue<std::vector<std::vector<cv::Ptr<cv::mytracker::TrackerMOSSE>>>> queueYoloTracker_right;      // queue for old image for optical flow. vector size is [num human,6]
+std::queue<std::vector<std::vector<cv::Mat1b>>> queueYoloTemplate_right;      // queue for old image for optical flow. vector size is [num human,6]
+std::queue<std::vector<std::vector<cv::Rect2i>>> queueYoloRoi_right;        // queue for search roi for optical flow. vector size is [num human,6]
+std::queue<std::vector<std::vector<cv::Rect2i>>> queueRoi_right;          // queue for search roi for optical flow. vector size is [num human,6]
+std::queue<std::vector<std::vector<cv::Mat1b>>> queueTemplate_right;
+std::queue<std::vector<std::vector<cv::Ptr<cv::mytracker::TrackerMOSSE>>>> queueMosseTracker_right;
+std::queue<std::vector<std::vector<bool>>> queueScale_right; //search area scale
+std::queue<std::vector<std::vector<std::vector<int>>>> queueMoveRight; //queue for saving previous move
 
-/* 3d positioning by stereo camera */
+/*3D position*/
+std::queue<std::vector<std::vector<std::vector<int>>>> queueTriangulation_left;
+std::queue<std::vector<std::vector<std::vector<int>>>> queueTriangulation_right;
+/* from joints to robot control */
+std::queue<std::vector<std::vector<std::vector<int>>>> queueJointsPositions;
+/* notify danger */
+std::queue<bool> queueDanger;
+
+/* constant valude definition */
+extern const std::string filename_left = "humanMotion_0119_left.mp4";
+extern const std::string filename_right = "humanMotion_0119_right.mp4";
+extern const int LEFT = 0;
+extern const int RIGHT = 1;
+extern const bool save = true;
+extern const bool boolSparse = false;
+extern const bool boolGray = true;
+extern const bool boolBatch = true; //if yolo inference is run in concatenated img
+extern const std::string methodDenseOpticalFlow = "farneback"; //"lucasKanade_dense","rlof"
+extern const int dense_vel_method = 3; //0: average, 1:second largest , 2 : median, 3 : third-quarter, 4 : first-quarter
+extern const float qualityCorner = 0.01;
+/* roi setting */
+extern const bool bool_dynamic_roi = true; //adopt dynamic roi
+extern const bool bool_rotate_roi = true;
+//if true
+extern const float max_half_diagonal = 55 * std::pow(2, 0.5);
+extern const float min_half_diagonal = 10 * std::pow(2, 0.5);
+/* roi setting */
+extern const int roiSize_wrist = 50;
+extern const int roiSize_elbow = 50;
+extern const int roiSize_shoulder = 60;
+extern const float DIF_THRESHOLD = 5;
+extern const float epsironMove = 0.05;//half range of back ground effect:: a-epsironMove<=flow<=a+epsironMove
+/* mosse constant setting */
+extern const double threshold_mosse = 7.0; //PSR thresholdextern const float DIF_THRESHOLD = roiWidthOF; //threshold for adapting yolo detection's roi
+extern const float MIN_MOVE = 0.0; //minimum opticalflow movement : square value
+/*if exchange template of Yolo */
+extern const bool boolChange = true;
+/* save date */
+extern const std::string file_yolo_left = "yolo_left.csv";
+extern const std::string file_yolo_right = "yolo_right.csv";
+extern const std::string file_of_left = "opticalflow_left.csv";
+extern const std::string file_of_right = "opticalflow_right.csv";
+extern const std::string file_3d = "triangulation.csv";
+
+/* 3D triangulation */
 extern const int BASELINE = 280; // distance between 2 cameras
-/* camera calibration result */
-extern const cv::Mat cameraMatrix = (cv::Mat_<double>(3, 3) << 369, 0, 320, // fx: focal length in x, cx: principal point x
-    0, 369, 320,                           // fy: focal length in y, cy: principal point y
+// std::vector<std::vector<float>> cameraMatrix{ {179,0,160},{0,179,160},{0,0,1} }; //camera matrix from camera calibration
+
+/* revise here based on camera calibration */
+extern const cv::Mat cameraMatrix = (cv::Mat_<float>(3, 3) << 297.0, 0, 151.5, // fx: focal length in x, cx: principal point x
+    0, 297.5, 149.0,                           // fy: focal length in y, cy: principal point y
     0, 0, 1                                // 1: scaling factor
     );
-extern const cv::Mat distCoeffs = (cv::Mat_<double>(1, 5) << 1, 1, 1, 1, 1);
+extern const cv::Mat distCoeffs = (cv::Mat_<float>(1, 5) << -0.00896, -0.215, 0.00036, 0.0043, 0.391);
 /* transformation matrix from camera coordinate to robot base coordinate */
 extern const std::vector<std::vector<float>> transform_cam2base{ {1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1} };
-//3d objects number
-extern const int numObjects = 50;
-
-/* UR catching point */
-extern const int TARGET_DEPTH = 600; // catching point is 40 cm away from camera position
-
-/* save file setting */
-extern const std::string file_yolo_bbox_left = "yolo_bbox__left.csv";
-extern const std::string file_yolo_class_left = "yolo_class_left.csv";
-extern const std::string file_tm_bbox_left = "tm_bbox_left.csv";
-extern const std::string file_tm_class_left = "tm_class_left.csv";
-extern const std::string file_seq_left = "seqData_left.csv";
-extern const std::string file_kf_left = "kfData_left.csv";
-extern const std::string file_yolo_bbox_right = "yolo_bboxe_right.csv";
-extern const std::string file_yolo_class_right = "yolo_class_right.csv";
-extern const std::string file_tm_bbox_right = "tm_bbox_right.csv";
-extern const std::string file_tm_class_right = "tm_class_right.csv";
-extern const std::string file_seq_right = "seqData_right.csv";
-extern const std::string file_kf_right = "kfData_right.csv";
-extern const std::string file_3d = "triangulation.csv";
-extern const std::string file_target = "target.csv";
-
-// queue definitions
-std::queue<std::array<cv::Mat1b, 2>> queueFrame; // queue for frame
-std::queue<int> queueFrameIndex;  // queue for frame index
-
-//Yolo signals
-std::queue<bool> queueYolo_tracker2seq_left, queueYolo_tracker2seq_right;
-std::queue<bool> queueYolo_seq2tri_left, queueYolo_seq2tri_right;
-std::queue<bool> queue_tri2predict;
-
-//mosse
-std::queue<std::vector<cv::Ptr<cv::mytracker::TrackerMOSSE>>> queueTrackerYolo_left;
-std::queue<std::vector<cv::Ptr<cv::mytracker::TrackerMOSSE>>> queueTrackerYolo_right;
-std::queue<std::vector<cv::Ptr<cv::mytracker::TrackerMOSSE>>> queueTrackerMOSSE_left;
-std::queue<std::vector<cv::Ptr<cv::mytracker::TrackerMOSSE>>> queueTrackerMOSSE_right;
-
-// left cam
-std::queue<std::vector<cv::Mat1b>> queueYoloTemplateLeft; // queue for yolo template : for real cv::Mat type
-std::queue<std::vector<cv::Rect2d>> queueYoloBboxLeft;    // queue for yolo bbox
-std::queue<std::vector<cv::Mat1b>> queueTMTemplateLeft;   // queue for templateMatching template img : for real cv::Mat
-std::queue<std::vector<cv::Rect2d>> queueTMBboxLeft;      // queue for templateMatching bbox
-std::queue<std::vector<int>> queueYoloClassIndexLeft;     // queue for class index
-std::queue<std::vector<int>> queueTMClassIndexLeft;       // queue for class index
-std::queue<std::vector<bool>> queueTMScalesLeft;          // queue for search area scale
-std::queue<std::vector<std::vector<int>>> queueMoveLeft; //queue for saving previous move
-std::queue<bool> queueLabelUpdateLeft;                    // for updating labels of sequence data
-//std::queue<int> queueNumLabels;                           // current labels number -> for maintaining label number consistency
-std::queue<bool> queueStartYolo_left; //if new Yolo inference can start
-std::queue<bool> queueStartYolo_right; //if new Yolo inference can start
-
-// right cam
-std::queue<std::vector<cv::Mat1b>> queueYoloTemplateRight; // queue for yolo template : for real cv::Mat type
-std::queue<std::vector<cv::Rect2d>> queueYoloBboxRight;    // queue for yolo bbox
-std::queue<std::vector<cv::Mat1b>> queueTMTemplateRight;   // queue for templateMatching template img : for real cv::Mat
-std::queue<std::vector<cv::Rect2d>> queueTMBboxRight;      // queue for TM bbox
-std::queue<std::vector<int>> queueYoloClassIndexRight;     // queue for class index
-std::queue<std::vector<int>> queueTMClassIndexRight;       // queue for class index
-std::queue<std::vector<bool>> queueTMScalesRight;          // queue for search area scale
-std::queue<std::vector<std::vector<int>>> queueMoveRight; //queue for saving previous move
-std::queue<bool> queueLabelUpdateRight;                    // for updating labels of sequence data
-
-//from tm to yolo
-std::queue<std::vector<cv::Rect2d>> queueTM2YoloBboxLeft;      // queue for templateMatching bbox
-std::queue<std::vector<int>> queueTM2YoloClassIndexLeft;     // queue for class index
-std::queue<std::vector<cv::Rect2d>> queueTM2YoloBboxRight;      // queue for templateMatching bbox
-std::queue<std::vector<int>> queueTM2YoloClassIndexRight;     // queue for class index
-
-//from seq : kalman prediction
-std::queue<std::vector<std::vector<double>>> queueKfPredictLeft; //{label, left,top,width,height}
-std::queue<std::vector<std::vector<double>>> queueKfPredictRight;
-
-// sequential data
-std::vector<std::vector<std::vector<double>>> seqData_left, seqData_right; //storage for sequential data to share with triangulation.h
-std::queue<int> queueTargetFrameIndex_left;                      // TM estimation frame
-std::queue<int> queueTargetFrameIndex_right;                      // TM estimation frame
-std::queue<std::vector<cv::Rect2d>> queueTargetBboxesLeft;  // bboxes from template matching for predict objects' trajectory
-std::queue<std::vector<cv::Rect2d>> queueTargetBboxesRight; // bboxes from template matching for predict objects' trajectory
-std::queue<std::vector<int>> queueTargetClassIndexesLeft;   // class from template matching for maintain consistency
-std::queue<std::vector<int>> queueTargetClassIndexesRight;  // class from template matching for maintain consistency
-
-//matching
-std::queue<std::vector<int>> queueUpdateLabels_left;
-std::queue<std::vector<int>> queueUpdateLabels_right;
-/* for predict */
-std::queue< std::vector<std::vector<std::vector<int>>>> queue3DData;
-//mutex
-std::mutex mtxImg, mtxYoloLeft, mtxTMLeft, mtxTarget; // define mutex
-
-
 #endif

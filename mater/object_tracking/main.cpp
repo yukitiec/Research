@@ -1,225 +1,130 @@
 #include "stdafx.h"
-#include "yolo_batch.h"
+#include "yolopose_batch.h"
 #include "tracker.h"
 #include "utility.h"
-#include "sequence.h"
-#include "prediction.h"
-#include "global_parameters.h"
 #include "triangulation.h"
-#include "mosse.h"
+#include "global_parameters.h"
 
-//saveFile
-extern const std::string file_yolo_bbox_left;
-extern const std::string file_yolo_class_left;
-extern const std::string file_yolo_bbox_right;
-extern const std::string file_yolo_class_right;
+extern std::queue<std::array<cv::Mat1b, 2>> queueFrame;
+extern std::queue<int> queueFrameIndex;
 
-// camera : constant setting
-extern const int LEFT_CAMERA;
-extern const int RIGHT_CAMERA;
+/* constant valude definition */
+extern const std::string filename_left;
+extern const std::string filename_right;
+extern const bool save;
+extern const bool boolSparse;
+extern const bool boolGray;
+extern const bool boolBatch;
+extern const int LEFT;
+extern const int RIGHT;
+extern const std::string methodDenseOpticalFlow; //"lucasKanade_dense","rlof"
+extern const float qualityCorner;
+/* roi setting */
+extern const int roiSize_shoulder;
+extern const int roiSize_elbow;
+extern const int roiSize_wrist;
+extern const float MoveThreshold;
+extern const float epsironMove;
+/* dense optical flow skip rate */
+extern const int skipPixel;
+/*if exchange template of Yolo */
+extern const bool boolChange;
 
-//Yolo signals
-extern std::queue<bool> queueYolo_tracker2seq_left, queueYolo_tracker2seq_right;
-extern std::queue<bool> queueYolo_seq2tri_left, queueYolo_seq2tri_right;
-
-// tracker
-extern const bool boolMOSSE;
-extern const double threshold_mosse;
-
-// queue definition
-extern std::queue<std::array<cv::Mat1b, 2>> queueFrame; // queue for frame
-extern std::queue<int> queueFrameIndex;  // queue for frame index
-
-//mosse
-extern std::queue<std::vector<cv::Ptr<cv::mytracker::TrackerMOSSE>>> queueTrackerYolo_left;
-extern std::queue<std::vector<cv::Ptr<cv::mytracker::TrackerMOSSE>>> queueTrackerYolo_right;
-extern std::queue<std::vector<cv::Ptr<cv::mytracker::TrackerMOSSE>>> queueTrackerMOSSE_left;
-extern std::queue<std::vector<cv::Ptr<cv::mytracker::TrackerMOSSE>>> queueTrackerMOSSE_right;
-
-// left cam
-extern std::queue<std::vector<cv::Mat1b>> queueYoloTemplateLeft; // queue for yolo template : for real cv::Mat type
-extern std::queue<std::vector<cv::Rect2d>> queueYoloBboxLeft;    // queue for yolo bbox
-extern std::queue<std::vector<cv::Mat1b>> queueTMTemplateLeft;   // queue for templateMatching template img : for real cv::Mat
-extern std::queue<std::vector<cv::Rect2d>> queueTMBboxLeft;      // queue for templateMatching bbox
-extern std::queue<std::vector<int>> queueYoloClassIndexLeft;     // queue for class index
-extern std::queue<std::vector<int>> queueTMClassIndexLeft;       // queue for class index
-extern std::queue<std::vector<bool>> queueTMScalesLeft;          // queue for search area scale
-extern std::queue<bool> queueLabelUpdateLeft;                    // for updating labels of sequence data
-//std::queue<int> queueNumLabels;                           // current labels number -> for maintaining label number consistency
-extern std::queue<bool> queueStartYolo_left; //if new Yolo inference can start
-extern std::queue<bool> queueStartYolo_right; //if new Yolo inference can start
-
-// right cam
-extern std::queue<std::vector<cv::Mat1b>> queueYoloTemplateRight; // queue for yolo template : for real cv::Mat type
-extern std::queue<std::vector<cv::Rect2d>> queueYoloBboxRight;    // queue for yolo bbox
-extern std::queue<std::vector<cv::Mat1b>> queueTMTemplateRight;   // queue for templateMatching template img : for real cv::Mat
-extern std::queue<std::vector<cv::Rect2d>> queueTMBboxRight;      // queue for TM bbox
-extern std::queue<std::vector<int>> queueYoloClassIndexRight;     // queue for class index
-extern std::queue<std::vector<int>> queueTMClassIndexRight;       // queue for class index
-extern std::queue<std::vector<bool>> queueTMScalesRight;          // queue for search area scale
-extern std::queue<bool> queueLabelUpdateRight;                    // for updating labels of sequence data
-
-//from tm to yolo
-extern std::queue<std::vector<cv::Rect2d>> queueTM2YoloBboxLeft;      // queue for templateMatching bbox
-extern std::queue<std::vector<int>> queueTM2YoloClassIndexLeft;     // queue for class index
-extern std::queue<std::vector<cv::Rect2d>> queueTM2YoloBboxRight;      // queue for templateMatching bbox
-extern std::queue<std::vector<int>> queueTM2YoloClassIndexRight;     // queue for class index
-
-//from seq : kalman prediction
-extern std::queue<std::vector<std::vector<double>>> queueKfPredictLeft; //{label, left,top,width,height}
-extern std::queue<std::vector<std::vector<double>>> queueKfPredictRight;
-
-// for saving sequence data
-extern std::vector<std::vector<std::vector<double>>> seqData_left, seqData_right; //storage for sequential data
-extern std::queue<int> queueTargetFrameIndex_left;                      // TM estimation frame
-extern std::queue<int> queueTargetFrameIndex_right;
-extern std::queue<std::vector<cv::Rect2d>> queueTargetBboxesLeft;  // bboxes from template matching for predict objects' trajectory
-extern std::queue<std::vector<cv::Rect2d>> queueTargetBboxesRight; // bboxes from template matching for predict objects' trajectory
-extern std::queue<std::vector<int>> queueTargetClassIndexesLeft;   // class from template matching for maintain consistency
-extern std::queue<std::vector<int>> queueTargetClassIndexesRight;  // class from template matching for maintain consistency
-
-//for matching 
-extern std::queue<std::vector<int>> queueUpdateLabels_left;
-extern std::queue<std::vector<int>> queueUpdatedLabels_right;
-
-// declare function
-/* yolo detection */
-void yoloDetect();
-
-void yoloDetect()
+void yoloPoseDetect()
 {
-    /* Yolo Detection Thread
-     * Args:
-     *   queueFrame : frame
-     *   queueFrameIndex : frame index
-     *   queueYoloTemplate : detected template img
-     *   queueYoloBbox : detected template bbox
-     */
-
-    Utility utYolo;
-    YOLODetect_batch yolo;
-    float t_elapsed = 0;
-
-    //left
-    std::vector<std::vector<cv::Rect2d>> posSaverYoloLeft;
-    std::vector<std::vector<int>> classSaverYoloLeft;
-    //right
-    std::vector<std::vector<cv::Rect2d>> posSaverYoloRight;
-    std::vector<std::vector<int>> classSaverYoloRight;
-    //detectedFrame
-    //left
-    std::vector<int> detectedFrameLeft;
-    std::vector<int> detectedFrameClassLeft;
-    //right
-    std::vector<int> detectedFrameRight;
-    std::vector<int> detectedFrameClassRight;
-    //std::cout << "yolo initialization has finished" << std::endl;
-    /* initialization */
-    if (!queueYoloBboxLeft.empty())
-    {
-        //std::cout << "queueYoloBboxLeft isn't empty" << std::endl;
-        while (!queueYoloBboxLeft.empty())
-        {
-            queueYoloBboxLeft.pop();
-        }
-    }
-    if (!queueYoloTemplateLeft.empty())
-    {
-        //std::cout << "queueYoloTemplateLeft isn't empty" << std::endl;
-        while (!queueYoloTemplateLeft.empty())
-        {
-            queueYoloTemplateLeft.pop();
-        }
-    }
-    if (!queueYoloClassIndexLeft.empty())
-    {
-        //std::cout << "queueYoloClassIndexesLeft isn't empty" << std::endl;
-        while (!queueYoloClassIndexLeft.empty())
-        {
-            queueYoloClassIndexLeft.pop();
-        }
-    }
-    // vector for saving position
-
-    int frameIndex;
+    /* constructor of YOLOPoseEstimator */
+    //else YOLOPose yolo_left, yolo_right;
+    YOLOPoseBatch yolo;
+    Utility utyolo;
     int countIteration = 0;
-    /* while queueFrame is empty wait until img is provided */
-    int counterFinish = 0; // counter before finish
-    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-    while (true)
+    float t_elapsed = 0;
+    /* prepare storage */
+    std::vector<std::vector<std::vector<std::vector<int>>>> posSaver_left; //[sequence,numHuman,joints,element] :{frameIndex,xCenter,yCenter}
+    std::vector<std::vector<std::vector<std::vector<int>>>> posSaver_right; //[sequence,numHuman,joints,element] :{frameIndex,xCenter,yCenter}
+    posSaver_left.reserve(300);
+    posSaver_right.reserve(300);
+    std::this_thread::sleep_for(std::chrono::seconds(3));
+    if (queueFrame.empty())
     {
-        bool boolImgs = false;
-        std::array<cv::Mat1b, 2> frames;
-        int frameIndex;
-        if (!queueFrame.empty())
+        while (queueFrame.empty())
         {
-            frames = queueFrame.front();
-            frameIndex = queueFrameIndex.front();
-            queueFrame.pop();
-            queueFrameIndex.pop();
-            boolImgs = true;
-        }
-        //bool boolImgs = utYolo.getImagesFromQueueYolo(frames, frameIndex);
-        if (!boolImgs)
-        {
-            if (counterFinish > 10)
+            if (!queueFrame.empty())
             {
                 break;
             }
-            // No more frames in the queue, exit the loop
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
-            std::cout << "Yolo :: remaining counter until finish is :" << 10 - counterFinish << std::endl;
-            counterFinish++;
-            continue;
-        }
-        if (frames[LEFT_CAMERA].rows > 0 && frames[RIGHT_CAMERA].rows > 0)
-        {
-            counterFinish = 0;
-            //concatenate 2 imgs horizontally
-            auto start_pre = std::chrono::high_resolution_clock::now();
-            cv::Mat1b concatFrame;
-            cv::hconcat(frames[LEFT_CAMERA], frames[RIGHT_CAMERA], concatFrame);
-            auto stop_pre = std::chrono::high_resolution_clock::now();
-            auto duration_pre = std::chrono::duration_cast<std::chrono::milliseconds>(stop_pre - start_pre);
-            //std::cout << "time taken by concatenate img : " << duration_pre.count() << " milliseconds" << std::endl;
-            /*start yolo detection */
-            auto start = std::chrono::high_resolution_clock::now();
-            yolo.detect(concatFrame, frameIndex, posSaverYoloLeft, posSaverYoloRight, classSaverYoloLeft, classSaverYoloRight,
-                detectedFrameLeft, detectedFrameRight, detectedFrameClassLeft, detectedFrameClassRight, countIteration);
-            auto stop = std::chrono::high_resolution_clock::now();
-            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
-            t_elapsed = t_elapsed + static_cast<float>(duration.count());
-            countIteration++;
-            std::cout << "Yolo -- " << countIteration << " --" << std::endl;
-            //std::cout << "#######" << countIteration << "---- Time taken by YOLO detection : " << duration.count() << " milliseconds #################" << std::endl;
+            //std::cout << "wait for images" << std::endl;
         }
     }
-    if (countIteration != 0) std::cout << " Yolo detection process speed :: " << static_cast<int>(countIteration / t_elapsed * 1000) << " Hz for " << countIteration << " cycles" << std::endl;
-    /* check data */
-    std::cout << "position saver : Yolo : " << std::endl;
-    std::cout << " : Left : " << std::endl;
-    std::cout << "posSaverYoloLeft size:" << posSaverYoloLeft.size() << ", detectedFrame size:" << detectedFrameLeft.size() << std::endl;
-    utYolo.checkStorage(posSaverYoloLeft, detectedFrameLeft, file_yolo_bbox_left);
-    std::cout << "classSaverYoloLeft size:" << classSaverYoloLeft.size() << ", detectedFrameClass size:" << detectedFrameClassLeft.size() << std::endl;
-    utYolo.checkClassStorage(classSaverYoloLeft, detectedFrameClassLeft, file_yolo_class_left);
-    std::cout << " : Right : " << std::endl;
-    std::cout << "posSaverYoloRight size:" << posSaverYoloRight.size() << ", detectedFrame size:" << detectedFrameRight.size() << std::endl;
-    utYolo.checkStorage(posSaverYoloRight, detectedFrameRight, file_yolo_bbox_right);
-    std::cout << "classSaverYoloLeft size:" << classSaverYoloRight.size() << ", detectedFrameClass size:" << detectedFrameClassRight.size() << std::endl;
-    utYolo.checkClassStorage(classSaverYoloRight, detectedFrameClassRight, file_yolo_class_right);
+    /* frame is available */
+    else
+    {
+        int counter = 1;
+        int counterFinish = 0;
+        while (true)
+        {
+            if (counterFinish == 10)
+            {
+                break;
+            }
+            /* frame can't be available */
+            if (queueFrame.empty())
+            {
+                counterFinish++;
+                std::cout << "Yolo :: by finish :: " << 10 - counterFinish << std::endl;
+                /* waiting */
+                std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            }
+            /* frame available -> start yolo pose estimation */
+            else
+            {
+                counterFinish = 0;
+                std::array<cv::Mat1b, 2> frames;
+                int frameIndex;
+                auto start = std::chrono::high_resolution_clock::now();
+                utyolo.getImages(frames, frameIndex);
+                //if (boolBatch)
+                //{
+                cv::Mat1b concatFrame;
+                //std::cout << "frames[LEFT]:" << frames[LEFT].rows << "," << frames[LEFT].cols << ", frames[RIGHT]:" << frames[RIGHT].rows << "," << frames[RIGHT].cols << std::endl;
+                if (frames[LEFT].rows > 0 && frames[RIGHT].rows > 0)
+                {
+                    cv::hconcat(frames[LEFT], frames[RIGHT], concatFrame);//concatenate 2 imgs horizontally
+                    yolo.detect(concatFrame, frameIndex, counter, posSaver_left, posSaver_right);
+                    auto stop = std::chrono::high_resolution_clock::now();
+                    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
+                    t_elapsed = t_elapsed + static_cast<float>(duration.count());
+                    countIteration++;
+                    std::cout << "Time taken by YOLO detection : " << duration.count() << " milliseconds" << std::endl;
+                }
+            }
+        }
+    }
+    std::cout << "YOLO" << std::endl;
+    std::cout << " process speed :: " << static_cast<int>(countIteration / t_elapsed * 1000) << " Hz for " << countIteration << " cycles" << std::endl;
+    std::cout << "*** LEFT ***" << std::endl;
+    std::cout << "posSaver_left size=" << posSaver_left.size() << std::endl;
+    utyolo.saveYolo(posSaver_left, file_yolo_left);
+    std::cout << "*** RIGHT ***" << std::endl;
+    std::cout << "posSaver_right size=" << posSaver_right.size() << std::endl;
+    utyolo.saveYolo(posSaver_right, file_yolo_right);
 }
 
 
-/* main function */
 int main()
 {
-    /* video inference */
+    /* image inference */
+    /*
+    cv::Mat img = cv::imread("video/0019.jpg");
+    cv::Mat1b imgGray;
+    cv::cvtColor(img, imgGray, cv::COLOR_BGR2GRAY);
+    std::cout << img.size()<< std::endl;
+    int counter = 1;
+    yoloPoseEstimator.detect(imgGray,counter);
+    */
     //constructor 
     Utility ut;
-    TemplateMatching tm;
-    Sequence seq;
+    TemplateMatching tracking;
     Triangulation tri;
-    Prediction predict;
 
     /* video inference */;
     cv::VideoCapture capture_left(filename_left);
@@ -237,21 +142,11 @@ int main()
         return 0;
     }
     int counter = 0;
-
-    // multi thread code
-    std::thread threadYolo(yoloDetect);
-    std::cout << "start Yolo thread" << std::endl;
-    std::thread threadTemplateMatching(&TemplateMatching::main, tm);
-    std::cout << "start template matching thread" << std::endl;
-    //std::thread threadRemoveImg(&Utility::removeFrame, ut);
-    //std::cout << "remove frame has started" << std::endl;
-    std::thread threadSeq(&Sequence::main, seq);
-    //std::thread threadTri(&Triangulation::main, tri);
-    //std::cout << "start triangulation thread" << std::endl;
-    //std::thread threadPred(&Prediction::main, predict);
-    //std::cout << "start prediction thread" << std::endl;
-
-
+    /* start multiThread */
+    std::thread threadYolo(yoloPoseDetect);
+    std::thread threadTrack(&TemplateMatching::main, tracking);
+    //std::thread threadRemoveFrame(&Utility::removeFrame, ut);
+    //std::thread thread3d(&Triangulation::main, tri);
     while (true)
     {
         // Read the next frame
@@ -259,6 +154,7 @@ int main()
         capture_left >> frame_left;
         capture_right >> frame_right;
         counter++;
+        //std::cout << "left size=" << frame_left.size() << ", right size=" << frame_right.size() << std::endl;
         if (frame_left.empty() || frame_right.empty())
             break;
         cv::Mat1b frameGray_left, frameGray_right;
@@ -267,15 +163,12 @@ int main()
         std::array<cv::Mat1b, 2> frames = { frameGray_left,frameGray_right };
         // cv::Mat1b frameGray;
         //  cv::cvtColor(frame, frameGray, cv::COLOR_BGR2GRAY);
-        ut.pushFrame(frames, counter);
+        ut.pushImg(frames, counter);
     }
-
-    // std::thread threadTargetPredict(targetPredict);
     threadYolo.join();
-    threadTemplateMatching.join();
-    //threadRemoveImg.join();
-    threadSeq.join();
-    //threadTri.join();
-    //threadPred.join();
+    threadTrack.join();
+    //threadRemoveFrame.join();
+    //thread3d.join();
+
     return 0;
 }

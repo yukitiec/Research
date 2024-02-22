@@ -5,485 +5,41 @@
 
 #include "stdafx.h"
 
-// queue definition
-extern std::queue<std::array<cv::Mat1b, 2>> queueFrame; // queue for frame
-extern std::queue<int> queueFrameIndex;  // queue for frame index
-extern std::queue<std::vector<int>> queueYoloClassIndexLeft;     // queue for class index
-extern std::queue<std::vector<int>> queueYoloClassIndexRight;     // queue for class index
+
+extern std::queue<std::array<cv::Mat1b, 2>> queueFrame;
+extern std::queue<int> queueFrameIndex;
+
+extern std::queue<std::vector<std::vector<cv::Rect2i>>> queueYoloRoi_left;        // queue for search roi for optical flow. vector size is [num human,6]
+extern std::queue<std::vector<std::vector<cv::Rect2i>>> queueYoloRoi_right;        // queue for search roi for optical flow. vector size is [num human,6]
+
 
 class Utility
 {
 public:
     Utility()
     {
-        std::cout << "construct Utility" << std::endl;
+        std::cout << "construct Utility class" << std::endl;
     }
 
-    bool getImagesFromQueueYolo(std::array<cv::Mat1b, 2>& imgs, int& frameIndex)
+    void pushImg(std::array<cv::Mat1b, 2>& frame, int& frameIndex)
     {
-        // std::unique_lock<std::mutex> lock(mtxImg); // Lock the mutex
-        if (!queueFrame.empty())
-        {
-            imgs = queueFrame.front();
-            frameIndex = queueFrameIndex.front();
-            // remove frame from queue
-            queueFrame.pop();
-            queueFrameIndex.pop();
-            return true;
-        }
-        return false;
-    }
-
-    void checkStorage(std::vector<std::vector<cv::Rect2d>>& posSaverYolo, std::vector<int>& detectedFrame, std::string fileName)
-    {
-
-        // Open the file for writing
-        std::ofstream outputFile(fileName);
-        if (!outputFile.is_open())
-        {
-            std::cerr << "Error: Could not open the file." << std::endl;
-        }
-        //std::cout << "estimated position :: Yolo :: " << std::endl;
-        int count = 1;
-        //std::cout << "posSaverYolo :: Contensts ::" << std::endl;
-        for (int i = 0; i < posSaverYolo.size(); i++)
-        {
-            //std::cout << (i + 1) << "-th iteration : " << std::endl;
-            for (int j = 0; j < posSaverYolo[i].size(); j++)
-            {
-                //std::cout << detectedFrame[i] << "-th frame :: left=" << posSaverYolo[i][j].x << ", top=" << posSaverYolo[i][j].y << ", width=" << posSaverYolo[i][j].width << ", height=" << posSaverYolo[i][j].height << std::endl;
-                outputFile << detectedFrame[i];
-                outputFile << ",";
-                outputFile << posSaverYolo[i][j].x;
-                outputFile << ",";
-                outputFile << posSaverYolo[i][j].y;
-                outputFile << ",";
-                outputFile << posSaverYolo[i][j].width;
-                outputFile << ",";
-                outputFile << posSaverYolo[i][j].height;
-                if (j != posSaverYolo[i].size() - 1)
-                {
-                    outputFile << ",";
-                }
-            }
-            outputFile << "\n";
-        }
-        // close file
-        outputFile.close();
-    }
-
-    void checkClassStorage(std::vector<std::vector<int>>& classSaverYolo, std::vector<int>& detectedFrame, std::string fileName)
-    {
-        // Open the file for writing
-        std::ofstream outputFile(fileName);
-        if (!outputFile.is_open())
-        {
-            std::cerr << "Error: Could not open the file." << std::endl;
-        }
-        int count = 1;
-        //std::cout << "Class saver :: Contensts ::" << std::endl;
-        for (int i = 0; i < classSaverYolo.size(); i++)
-        {
-            //std::cout << detectedFrame[i] << "-th frame : " << std::endl;
-            for (int j = 0; j < classSaverYolo[i].size(); j++)
-            {
-                std::cout << classSaverYolo[i][j] << " ";
-                outputFile << detectedFrame[i];
-                outputFile << ",";
-                outputFile << classSaverYolo[i][j];
-                if (j != classSaverYolo[i].size() - 1)
-                {
-                    outputFile << ",";
-                }
-            }
-            outputFile << "\n";
-
-
-
-            //std::cout << std::endl;
-        }
-        // close file
-        outputFile.close();
-    }
-
-
-    void checkStorage_v2(std::vector<std::vector<cv::Rect2d>>& posSaverYolo, std::vector<int>& detectedFrame, std::string fileName)
-    {
-
-        // Open the file for writing
-        std::ofstream outputFile(fileName);
-        if (!outputFile.is_open())
-        {
-            std::cerr << "Error: Could not open the file." << std::endl;
-        }
-        //std::cout << "estimated position :: Yolo :: " << std::endl;
-        int count = 1;
-        std::cout << "posSaverYolo :: Contensts ::" << std::endl;
-        for (int i = 0; i < posSaverYolo.size(); i++)
-        {
-            std::cout << (i + 1) << "-th iteration : " << std::endl;
-            for (int j = 0; j < posSaverYolo[i].size(); j++)
-            {
-                std::cout << detectedFrame[i] << "-th frame :: left=" << posSaverYolo[i][j].x << ", top=" << posSaverYolo[i][j].y << ", width=" << posSaverYolo[i][j].width << ", height=" << posSaverYolo[i][j].height << std::endl;
-                outputFile << detectedFrame[i];
-                outputFile << ",";
-                outputFile << posSaverYolo[i][j].x;
-                outputFile << ",";
-                outputFile << posSaverYolo[i][j].y;
-                outputFile << ",";
-                outputFile << posSaverYolo[i][j].width;
-                outputFile << ",";
-                outputFile << posSaverYolo[i][j].height;
-                if (j != posSaverYolo[i].size() - 1)
-                {
-                    outputFile << ",";
-                }
-            }
-            outputFile << "\n";
-        }
-        // close file
-        outputFile.close();
-    }
-
-    void checkClassStorage_V2(std::vector<std::vector<int>>& classSaverYolo, std::vector<int>& detectedFrame, std::string fileName)
-    {
-        // Open the file for writing
-        std::ofstream outputFile(fileName);
-        if (!outputFile.is_open())
-        {
-            std::cerr << "Error: Could not open the file." << std::endl;
-        }
-        int count = 1;
-        std::cout << "Class saver :: Contensts ::" << std::endl;
-        for (int i = 0; i < classSaverYolo.size(); i++)
-        {
-            std::cout << detectedFrame[i] << "-th frame : " << std::endl;
-            for (int j = 0; j < classSaverYolo[i].size(); j++)
-            {
-                std::cout << classSaverYolo[i][j] << " ";
-                outputFile << detectedFrame[i];
-                outputFile << ",";
-                outputFile << classSaverYolo[i][j];
-                if (j != classSaverYolo[i].size() - 1)
-                {
-                    outputFile << ",";
-                }
-            }
-            outputFile << "\n";
-
-
-
-            std::cout << std::endl;
-        }
-        // close file
-        outputFile.close();
-    }
-
-    void checkStorageTM(std::vector<std::vector<cv::Rect2d>>& posSaverYolo, std::vector<int>& detectedFrame, std::string fileName)
-    {
-        // Open the file for writing
-        std::ofstream outputFile(fileName);
-        if (!outputFile.is_open())
-        {
-            std::cerr << "Error: Could not open the file." << std::endl;
-        }
-        //std::cout << "estimated position :: Yolo :: " << std::endl;
-        int count = 1;
-        //std::cout << "posSaverYolo :: Contents ::" << std::endl;
-        for (int i = 0; i < posSaverYolo.size(); i++)
-        {
-            //std::cout << (i + 1) << "-th iteration : " << std::endl;
-            for (int j = 0; j < posSaverYolo[i].size(); j++)
-            {
-                //std::cout << detectedFrame[i] << "-th frame :: left=" << posSaverYolo[i][j].x << ", top=" << posSaverYolo[i][j].y << ", width=" << posSaverYolo[i][j].width << ", height=" << posSaverYolo[i][j].height << std::endl;
-                outputFile << detectedFrame[i];
-                outputFile << ",";
-                outputFile << posSaverYolo[i][j].x;
-                outputFile << ",";
-                outputFile << posSaverYolo[i][j].y;
-                outputFile << ",";
-                outputFile << posSaverYolo[i][j].width;
-                outputFile << ",";
-                outputFile << posSaverYolo[i][j].height;
-                if (j != posSaverYolo[i].size() - 1)
-                {
-                    outputFile << ",";
-                }
-            }
-            outputFile << "\n";
-        }
-        // close file
-        outputFile.close();
-    }
-
-    void checkClassStorageTM(std::vector<std::vector<int>>& classSaverYolo, std::vector<int>& detectedFrame, std::string fileName)
-    {
-        // Open the file for writing
-        std::ofstream outputFile(fileName);
-        if (!outputFile.is_open())
-        {
-            std::cerr << "Error: Could not open the file." << std::endl;
-        }
-        int count = 1;
-        //std::cout << "Class saver :: Contensts ::" << std::endl;
-        for (int i = 0; i < classSaverYolo.size(); i++)
-        {
-            //std::cout << detectedFrame[i] << "-th frame : " << std::endl;
-            for (int j = 0; j < classSaverYolo[i].size(); j++)
-            {
-                //std::cout << classSaverYolo[i][j] << " ";
-                outputFile << detectedFrame[i];
-                outputFile << ",";
-                outputFile << classSaverYolo[i][j];
-                if (j != classSaverYolo[i].size() - 1)
-                {
-                    outputFile << ",";
-                }
-            }
-            outputFile << "\n";
-            //std::cout << std::endl;
-        }
-        // close file
-        outputFile.close();
-    }
-
-    void checkSeqData(std::vector<std::vector<std::vector<double>>>& dataLeft, std::string fileName)
-    {
-        // Open the file for writing
-        /* bbox data */
-        std::ofstream outputFile(fileName);
-        std::vector<int> frameIndexes;
-        frameIndexes.reserve(2000);
-        if (!outputFile.is_open())
-        {
-            std::cerr << "Error: Could not open the file." << std::endl;
-        }
-        //std::cout << "file open :: save sequence data in csv file :: data size=" << dataLeft.size() << std::endl;
-        for (int i = 0; i < dataLeft.size(); i++) //num objects
-        {
-            //std::cout << (i + 1) << "-th objects : " << std::endl;
-            for (int j = 0; j < dataLeft[i].size(); j++) //num sequence
-            {
-                //std::cout << j << ":: frameIndex=" << dataLeft[i][j][0] << "class label=" << dataLeft[i][j][1] << ", left=" << dataLeft[i][j][2] << ", top=" << dataLeft[i][j][3] << " " << ", width=" << dataLeft[i][j][4] << ", height=" << dataLeft[i][j][5] << std::endl;
-                auto it = std::find(frameIndexes.begin(), frameIndexes.end(), dataLeft[i][j][0]);
-                /* new frame index */
-                if (it == frameIndexes.end()) frameIndexes.push_back(dataLeft[i][j][0]);
-                outputFile << dataLeft[i][j][0];
-                outputFile << ",";
-                outputFile << dataLeft[i][j][1];
-                outputFile << ",";
-                outputFile << dataLeft[i][j][2];
-                outputFile << ",";
-                outputFile << dataLeft[i][j][3];
-                outputFile << ",";
-                outputFile << dataLeft[i][j][4];
-                outputFile << ",";
-                outputFile << dataLeft[i][j][5];
-                if (j != dataLeft[i].size() - 1)
-                {
-                    outputFile << ",";
-                }
-            }
-            outputFile << "\n";
-            //std::cout << std::endl;
-        }
-        // close file
-        outputFile.close();
-    }
-
-    void checkKfData(std::vector<std::vector<std::vector<double>>>& dataLeft, std::string fileName)
-    {
-        // Open the file for writing
-        /* bbox data */
-        std::ofstream outputFile(fileName);
-        std::vector<int> frameIndexes;
-        frameIndexes.reserve(2000);
-        if (!outputFile.is_open())
-        {
-            std::cerr << "Error: Could not open the file." << std::endl;
-        }
-        //std::cout << "file open :: save sequence data in csv file :: data size=" << dataLeft.size() << std::endl;
-        for (int i = 0; i < dataLeft.size(); i++) //num objects
-        {
-            //std::cout << (i + 1) << "-th objects : " << std::endl;
-            for (int j = 0; j < dataLeft[i].size(); j++) //num sequence
-            {
-                //std::cout << j << ":: frameIndex=" << dataLeft[i][j][0] << ", label=" << dataLeft[i][j][1] << "xCenter=" << dataLeft[i][j][2] << ", yCenter=" << dataLeft[i][j][3] << std::endl;
-                auto it = std::find(frameIndexes.begin(), frameIndexes.end(), dataLeft[i][j][0]);
-                /* new frame index */
-                if (it == frameIndexes.end()) frameIndexes.push_back(dataLeft[i][j][0]);
-                outputFile << dataLeft[i][j][0];
-                outputFile << ",";
-                outputFile << dataLeft[i][j][1];
-                outputFile << ",";
-                outputFile << dataLeft[i][j][2];
-                outputFile << ",";
-                outputFile << dataLeft[i][j][3];
-                if (j != dataLeft[i].size() - 1)
-                {
-                    outputFile << ",";
-                }
-            }
-            outputFile << "\n";
-            //std::cout << std::endl;
-        }
-        // close file
-        outputFile.close();
-    }
-
-    void checkSeqData_v2(std::vector<std::vector<std::vector<int>>>& dataLeft, std::vector<std::vector<int>>& classesLeft, std::string fileName_bbox, std::string fileName_class)
-    {
-        // Open the file for writing
-        /* bbox data */
-        std::ofstream outputFile(fileName_bbox);
-        std::vector<int> frameIndexes;
-        frameIndexes.reserve(2000);
-        if (!outputFile.is_open())
-        {
-            std::cerr << "Error: Could not open the file." << std::endl;
-        }
-        std::cout << "file open :: save sequence data in csv file" << std::endl;
-        for (int i = 0; i < dataLeft.size(); i++)
-        {
-            std::cout << (i + 1) << "-th objects : " << std::endl;
-            for (int j = 0; j < dataLeft[i].size(); j++)
-            {
-                std::cout << j << ":: frameIndex=" << dataLeft[i][j][0] << "class label=" << dataLeft[i][j][1] << ", x=" << dataLeft[i][j][2] << ", y=" << dataLeft[i][j][3] << " ";
-                auto it = std::find(frameIndexes.begin(), frameIndexes.end(), dataLeft[i][j][0]);
-                /* new frame index */
-                if (it == frameIndexes.end()) frameIndexes.push_back(dataLeft[i][j][0]);
-                outputFile << dataLeft[i][j][0];
-                outputFile << ",";
-                outputFile << dataLeft[i][j][1];
-                outputFile << ",";
-                outputFile << dataLeft[i][j][2];
-                outputFile << ",";
-                outputFile << dataLeft[i][j][3];
-                if (j != dataLeft[i].size() - 1)
-                {
-                    outputFile << ",";
-                }
-            }
-            outputFile << "\n";
-            std::cout << std::endl;
-        }
-        // close file
-        outputFile.close();
-
-        /* sort frame indexes */
-        std::sort(frameIndexes.begin(), frameIndexes.end());
-        /* bbox data */
-        std::ofstream outputFile_class(fileName_class);
-        if (!outputFile_class.is_open())
-        {
-            std::cerr << "Error: Could not open the file." << std::endl;
-        }
-        std::cout << "frameIndexes size = " << frameIndexes.size() << ", classesLeft size = " << classesLeft.size() << std::endl;
-        for (int i = 0; i < classesLeft.size(); i++)
-        {
-            std::cout << (i + 1) << "-th time : " << std::endl;
-            for (int j = 0; j < classesLeft[i].size(); j++)
-            {
-                std::cout << "frameIndex=" << frameIndexes[i] << ", label=" << classesLeft[i][j];
-                outputFile_class << frameIndexes[i];
-                outputFile_class << ",";
-                outputFile_class << classesLeft[i][j];
-                if (j != classesLeft[i].size() - 1)
-                {
-                    outputFile_class << ",";
-                }
-            }
-            outputFile_class << "\n";
-            std::cout << std::endl;
-        }
-        // close file
-        outputFile_class.close();
-    }
-
-    void save3d(std::vector<std::vector<std::vector<int>>>& posSaver, const std::string file)
-    {
-        // Open the file for writing
-        std::ofstream outputFile(file);
-        if (!outputFile.is_open())
-        {
-            std::cerr << "Error: Could not open the file." << std::endl;
-        }
-        std::cout << "estimated position :: Optical Flow :: " << std::endl;
-        /*num of objects */
-        for (int i = 0; i < posSaver.size(); i++)
-        {
-            std::cout << i << "-th objects :: " << std::endl;
-            /*num of sequence*/
-            for (int j = 0; j < posSaver[i].size(); j++)
-            {
-                std::cout << j << "-th timestep :: frameIndex=" << posSaver[i][j][0] << ", x=" << posSaver[i][j][1] << ", y=" << posSaver[i][j][2] << ", z=" << posSaver[i][j][3] << std::endl;
-                outputFile << posSaver[i][j][0];
-                outputFile << ",";
-                outputFile << posSaver[i][j][1];
-                outputFile << ",";
-                outputFile << posSaver[i][j][2];
-                outputFile << ",";
-                outputFile << posSaver[i][j][3];
-                if (j != posSaver[i].size() - 1)
-                {
-                    outputFile << ",";
-                }
-            }
-            outputFile << "\n";
-        }
-        // close file
-        outputFile.close();
-    }
-
-
-    bool getImagesFromQueueTM(std::array<cv::Mat1b, 2>& imgs, int& frameIndex)
-    {
-        // std::unique_lock<std::mutex> lock(mtxImg); // Lock the mutex
-        if (queueFrame.empty() || queueFrameIndex.empty())
-        {
-            return false;
-        }
-        else
-        {
-            imgs = queueFrame.front();
-            frameIndex = queueFrameIndex.front();
-            // remove frame from queue
-            queueFrame.pop();
-            queueFrameIndex.pop();
-            return true;
-        }
-    }
-
-    /* read imgs */
-    void pushFrame(std::array<cv::Mat1b, 2>& src, const int frameIndex)
-    {
-        // std::unique_lock<std::mutex> lock(mtxImg); // Lock the mutex
-        //  std::cout << "push imgs" << std::endl;
-        //  cv::Mat1b undistortedImgL, undistortedImgR;
-        //  cv::undistort(srcs[0], undistortedImgL, cameraMatrix, distCoeffs);
-        //  cv::undistort(srcs[1], undistortedImgR, cameraMatrix, distCoeffs);
-        //  std::array<cv::Mat1b, 2> undistortedImgs = { undistortedImgL,undistortedImgR };
-        //  queueFrame.push(undistortedImgs);
-        queueFrame.push(src);
+        // std::unique_lock<std::mutex> lock(mtxImg);
+        queueFrame.push(frame);
         queueFrameIndex.push(frameIndex);
     }
 
     void removeFrame()
     {
         int counterStart = 0;
-        while (true)
+        while (counterStart < 2)
         {
-            if (!queueYoloClassIndexLeft.empty() || !queueYoloClassIndexRight.empty())
+            if (!queueYoloRoi_left.empty() && !queueYoloRoi_right.empty())
             {
-                if (counterStart == 2) break;
                 while (true)
                 {
-                    if (queueYoloClassIndexLeft.empty() && queueYoloClassIndexRight.empty())
+                    if (queueYoloRoi_left.empty() && queueYoloRoi_right.empty())
                     {
                         counterStart += 1;
-                        if (!queueYoloClassIndexLeft.empty()) queueYoloClassIndexLeft.pop();
-                        if (!queueYoloClassIndexRight.empty()) queueYoloClassIndexRight.pop();
-                        //std::this_thread::sleep_for(std::chrono::milliseconds(500));
                         break;
                     }
                 }
@@ -492,13 +48,158 @@ public:
         /* remove imgs */
         while (!queueFrame.empty())
         {
+            auto start = std::chrono::high_resolution_clock::now();
             queueFrame.pop();
             queueFrameIndex.pop();
-            std::this_thread::sleep_for(std::chrono::microseconds(1500));
-            std::cout << "remove image" << std::endl;
+            std::this_thread::sleep_for(std::chrono::microseconds(3000));
+            auto stop = std::chrono::high_resolution_clock::now();
+            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
+            std::cout << " Time taken by removing image : " << duration.count() << " microseconds" << std::endl;
         }
     }
 
+    void getImages(std::array<cv::Mat1b, 2>& frame, int& frameIndex)
+    {
+        //std::unique_lock<std::mutex> lock(mtxImg); // exclude other accesses
+        frame = queueFrame.front();
+        // cvtColor(frame, frame, cv::COLOR_BGR2GRAY);
+        frameIndex = queueFrameIndex.front();
+        queueFrame.pop();
+        queueFrameIndex.pop();
+    }
+
+    void saveYolo(std::vector<std::vector<std::vector<std::vector<int>>>>& posSaver, const std::string& file)
+    {
+        // Open the file for writing
+        std::ofstream outputFile(file);
+        if (!outputFile.is_open())
+        {
+            std::cerr << "Error: Could not open the file." << std::endl;
+        }
+        /* write posSaver data to csv file */
+        //std::cout << "estimated position :: YOLO :: " << std::endl;
+        /*sequence*/
+        for (int i = 0; i < posSaver.size(); i++)
+        {
+            //std::cout << i << "-th sequence data ::: " << std::endl;
+            /*num of humans*/
+            for (int j = 0; j < posSaver[i].size(); j++)
+            {
+                //std::cout << j << "-th human detection:::" << std::endl;
+                /*num of joints*/
+                for (int k = 0; k < posSaver[i][j].size(); k++)
+                {
+                    //std::cout << k << "-th joint :: frameIndex=" << posSaver[i][j][k][0] << ", xCenter=" << posSaver[i][j][k][1] << ", yCenter=" << posSaver[i][j][k][2] << std::endl;
+                    outputFile << posSaver[i][j][k][0];
+                    outputFile << ",";
+                    outputFile << posSaver[i][j][k][1];
+                    outputFile << ",";
+                    outputFile << posSaver[i][j][k][2];
+                    outputFile << ",";
+                    outputFile << posSaver[i][j][k][3];
+                    outputFile << ",";
+                    outputFile << posSaver[i][j][k][4];
+                    if (k != posSaver[i][j].size() - 1)
+                    {
+                        outputFile << ",";
+                    }
+                }
+                outputFile << "\n";
+            }
+        }
+        // Close the file
+        outputFile.close();
+    }
+
+    void save(std::vector<std::vector<std::vector<std::vector<int>>>>& posSaver, const std::string& file)
+    {
+        // Open the file for writing
+        std::ofstream outputFile(file);
+        if (!outputFile.is_open())
+        {
+            std::cerr << "Error: Could not open the file." << std::endl;
+        }
+        //std::cout << "estimated position :: Optical Flow :: " << std::endl;
+        std::cout << "data size = " << posSaver.size() << std::endl;
+        if (posSaver.size() > 0)
+        {
+            /*sequence*/
+            for (int i = 0; i < posSaver.size(); i++)
+            {
+                //std::cout << i << "-th sequence data ::: " << std::endl;
+                /*num of humans*/
+                for (int j = 0; j < posSaver[i].size(); j++)
+                {
+                    //std::cout << j << "-th human detection:::" << std::endl;
+                    /*num of joints*/
+                    for (int k = 0; k < posSaver[i][j].size(); k++)
+                    {
+                        //std::cout << k << "-th joint :: frameIndex=" << posSaver[i][j][k][0] << ", xCenter=" << posSaver[i][j][k][1] << ", yCenter=" << posSaver[i][j][k][2] << std::endl;
+                        outputFile << posSaver[i][j][k][0];
+                        outputFile << ",";
+                        outputFile << posSaver[i][j][k][1];
+                        outputFile << ",";
+                        outputFile << posSaver[i][j][k][2];
+                        outputFile << ",";
+                        outputFile << posSaver[i][j][k][3];
+                        outputFile << ",";
+                        outputFile << posSaver[i][j][k][4];
+                        if (k != posSaver[i][j].size() - 1)
+                        {
+                            outputFile << ",";
+                        }
+                    }
+                    outputFile << "\n";
+                }
+            }
+            // close file
+            outputFile.close();
+        }
+        else
+            std::cout << "no data" << std::endl;
+        
+    }
+
+    void save3d(std::vector<std::vector<std::vector<std::vector<int>>>>& posSaver, const std::string& file)
+    {
+        // Open the file for writing
+        std::ofstream outputFile(file);
+        if (!outputFile.is_open())
+        {
+            std::cerr << "Error: Could not open the file." << std::endl;
+        }
+        std::cout << "estimated position :: Optical Flow :: " << std::endl;
+        /*sequence*/
+        for (int i = 0; i < posSaver.size(); i++)
+        {
+            std::cout << i << "-th sequence data ::: " << std::endl;
+            /*num of humans*/
+            for (int j = 0; j < posSaver[i].size(); j++)
+            {
+                std::cout << j << "-th human detection:::" << std::endl;
+                /*num of joints*/
+                for (int k = 0; k < posSaver[i][j].size(); k++)
+                {
+                    std::cout << k << "-th joint :: frameIndex=" << posSaver[i][j][k][0] << ", xCenter=" << posSaver[i][j][k][1] << ", yCenter=" << posSaver[i][j][k][2] << std::endl;
+                    outputFile << posSaver[i][j][k][0];
+                    outputFile << ",";
+                    outputFile << posSaver[i][j][k][1];
+                    outputFile << ",";
+                    outputFile << posSaver[i][j][k][2];
+                    outputFile << ",";
+                    outputFile << posSaver[i][j][k][3];
+                    if (k != posSaver[i][j].size() - 1)
+                    {
+                        outputFile << ",";
+                    }
+                }
+                outputFile << "\n";
+            }
+        }
+        // close file
+        outputFile.close();
+    }
 };
 
 #endif
+
