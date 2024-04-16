@@ -8,33 +8,6 @@ void Utility::pushImg(std::array<cv::Mat1b, 2>& frame, int& frameIndex)
     queueFrameIndex.push(frameIndex);
 }
 
-void Utility::removeFrame()
-{
-    int counterStart = 0;
-    while (counterStart < 2)
-    {
-        if (!queueYoloSearchRoi_left.empty() && !queueYoloSearchRoi_right.empty())
-        {
-            while (true)
-            {
-                if (queueYoloSearchRoi_left.empty() && queueYoloSearchRoi_right.empty())
-                {
-                    counterStart += 1;
-                    break;
-                }
-            }
-        }
-    }
-    /* remove imgs */
-    while (!queueFrame.empty())
-    {
-        queueFrame.pop();
-        queueFrameIndex.pop();
-        std::this_thread::sleep_for(std::chrono::microseconds(2000));
-        std::cout << "remove image" << std::endl;
-    }
-}
-
 void Utility::getImages(std::array<cv::Mat1b, 2>& frame, int& frameIndex)
 {
     //std::unique_lock<std::mutex> lock(mtxImg); // exclude other accesses
@@ -54,24 +27,28 @@ void Utility::saveYolo(std::vector<std::vector<std::vector<std::vector<int>>>>& 
         std::cerr << "Error: Could not open the file." << std::endl;
     }
     /* write posSaver data to csv file */
-    std::cout << "estimated position :: YOLO :: " << std::endl;
+    //std::cout << "estimated position :: YOLO :: " << std::endl;
     /*sequence*/
     for (int i = 0; i < posSaver.size(); i++)
     {
-        std::cout << i << "-th sequence data ::: " << std::endl;
+        //std::cout << i << "-th sequence data ::: " << std::endl;
         /*num of humans*/
         for (int j = 0; j < posSaver[i].size(); j++)
         {
-            std::cout << j << "-th human detection:::" << std::endl;
+            //std::cout << j << "-th human detection:::" << std::endl;
             /*num of joints*/
             for (int k = 0; k < posSaver[i][j].size(); k++)
             {
-                std::cout << k << "-th joint :: frameIndex=" << posSaver[i][j][k][0] << ", xCenter=" << posSaver[i][j][k][1] << ", yCenter=" << posSaver[i][j][k][2] << std::endl;
+                //std::cout << k << "-th joint :: frameIndex=" << posSaver[i][j][k][0] << ", xCenter=" << posSaver[i][j][k][1] << ", yCenter=" << posSaver[i][j][k][2] << std::endl;
                 outputFile << posSaver[i][j][k][0];
                 outputFile << ",";
                 outputFile << posSaver[i][j][k][1];
                 outputFile << ",";
                 outputFile << posSaver[i][j][k][2];
+                outputFile << ",";
+                outputFile << posSaver[i][j][k][3];
+                outputFile << ",";
+                outputFile << posSaver[i][j][k][4];
                 if (k != posSaver[i][j].size() - 1)
                 {
                     outputFile << ",";
@@ -92,24 +69,28 @@ void Utility::save(std::vector<std::vector<std::vector<std::vector<int>>>>& posS
     {
         std::cerr << "Error: Could not open the file." << std::endl;
     }
-    std::cout << "estimated position :: Optical Flow :: " << std::endl;
+    //std::cout << "estimated position :: Optical Flow :: " << std::endl;
     /*sequence*/
     for (int i = 0; i < posSaver.size(); i++)
     {
-        std::cout << i << "-th sequence data ::: " << std::endl;
+        //std::cout << i << "-th sequence data ::: " << std::endl;
         /*num of humans*/
         for (int j = 0; j < posSaver[i].size(); j++)
         {
-            std::cout << j << "-th human detection:::" << std::endl;
+            //std::cout << j << "-th human detection:::" << std::endl;
             /*num of joints*/
             for (int k = 0; k < posSaver[i][j].size(); k++)
             {
-                std::cout << k << "-th joint :: frameIndex=" << posSaver[i][j][k][0] << ", xCenter=" << posSaver[i][j][k][1] << ", yCenter=" << posSaver[i][j][k][2] << std::endl;
+                //std::cout << k << "-th joint :: frameIndex=" << posSaver[i][j][k][0] << ", xCenter=" << posSaver[i][j][k][1] << ", yCenter=" << posSaver[i][j][k][2] << std::endl;
                 outputFile << posSaver[i][j][k][0];
                 outputFile << ",";
                 outputFile << posSaver[i][j][k][1];
                 outputFile << ",";
                 outputFile << posSaver[i][j][k][2];
+                outputFile << ",";
+                outputFile << posSaver[i][j][k][3];
+                outputFile << ",";
+                outputFile << posSaver[i][j][k][4];
                 if (k != posSaver[i][j].size() - 1)
                 {
                     outputFile << ",";
@@ -130,19 +111,19 @@ void Utility::save3d(std::vector<std::vector<std::vector<std::vector<int>>>>& po
     {
         std::cerr << "Error: Could not open the file." << std::endl;
     }
-    std::cout << "estimated position :: Optical Flow :: " << std::endl;
+    //std::cout << "estimated position :: Optical Flow :: " << std::endl;
     /*sequence*/
     for (int i = 0; i < posSaver.size(); i++)
     {
-        std::cout << i << "-th sequence data ::: " << std::endl;
+        //std::cout << i << "-th sequence data ::: " << std::endl;
         /*num of humans*/
         for (int j = 0; j < posSaver[i].size(); j++)
         {
-            std::cout << j << "-th human detection:::" << std::endl;
+            //std::cout << j << "-th human detection:::" << std::endl;
             /*num of joints*/
             for (int k = 0; k < posSaver[i][j].size(); k++)
             {
-                std::cout << k << "-th joint :: frameIndex=" << posSaver[i][j][k][0] << ", xCenter=" << posSaver[i][j][k][1] << ", yCenter=" << posSaver[i][j][k][2] << std::endl;
+                //std::cout << k << "-th joint :: frameIndex=" << posSaver[i][j][k][0] << ", xCenter=" << posSaver[i][j][k][1] << ", yCenter=" << posSaver[i][j][k][2] << std::endl;
                 outputFile << posSaver[i][j][k][0];
                 outputFile << ",";
                 outputFile << posSaver[i][j][k][1];

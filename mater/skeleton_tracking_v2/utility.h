@@ -4,10 +4,11 @@
 #define UTILITY_H
 
 #include "stdafx.h"
+#include "global_parameters.h"
 
-
-extern std::queue<std::vector<std::vector<cv::Rect2i>>> queueYoloSearchRoi_left;        // queue for search roi for optical flow. vector size is [num human,6]
-extern std::queue<std::vector<std::vector<cv::Rect2i>>> queueYoloSearchRoi_right;        // queue for search roi for optical flow. vector size is [num human,6]
+/* frame queue */
+extern std::queue<std::array<cv::Mat1b, 2>> queueFrame;
+extern std::queue<int> queueFrameIndex;
 
 class Utility
 {
@@ -18,8 +19,6 @@ public:
     }
 
     void pushImg(std::array<cv::Mat1b, 2>& frame, int& frameIndex);
-
-    void removeFrame();
 
     void getImages(std::array<cv::Mat1b, 2>& frame, int& frameIndex);
 

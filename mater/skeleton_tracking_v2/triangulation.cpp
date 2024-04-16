@@ -21,10 +21,10 @@ void Triangulation::main()
         counterIteration++;
         if (queueFrame.empty() && queueTriangulation_left.empty() && queueTriangulation_right.empty())
         {
-            if (counterFinish == 10) break;
+            if (counterFinish == 1000) break;
             counterFinish++;
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            std::cout << "By finish : remain count is " << (10 - counterFinish) << std::endl;
+            std::this_thread::sleep_for(std::chrono::milliseconds(4));
+            //std::cout << "By finish : remain count is " << (1000 - counterFinish) << std::endl;
             continue;
         }
         else
@@ -35,19 +35,19 @@ void Triangulation::main()
                 counterNextIteration = 0;
                 auto start = std::chrono::high_resolution_clock::now();
                 std::vector<std::vector<std::vector<int>>> data_left, data_right;
-                std::cout << "start 3d positioning" << std::endl;
+                //std::cout << "start 3d positioning" << std::endl;
                 getData(data_left, data_right);
-                std::cout << "start" << std::endl;
+                //std::cout << "start" << std::endl;
                 std::vector<std::vector<std::vector<int>>> data_3d; //{num of human, joints, {frameIndex, X,Y,Z}}
                 triangulation(data_left, data_right, data_3d);
-                std::cout << "calculate 3d position" << std::endl;
+                //std::cout << "calculate 3d position" << std::endl;
                 /* arrange posSaver -> sequence data */
                 arrangeData(data_3d, posSaver_3d);
                 queueJointsPositions.push(posSaver_3d.back());
-                std::cout << "arrange data" << std::endl;
+                //std::cout << "arrange data" << std::endl;
                 auto stop = std::chrono::high_resolution_clock::now();
-                auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
-                std::cout << "time taken by 3d positioning=" << duration.count() << " milliseconds" << std::endl;
+                auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
+                std::cout << "time taken by 3d positioning=" << duration.count() << " microseconds" << std::endl;
             }
             /* at least one data can't be available -> delete data */
             else
@@ -62,7 +62,7 @@ void Triangulation::main()
                     }
                     else
                     {
-                        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+                        std::this_thread::sleep_for(std::chrono::microseconds(50));
                         counterNextIteration++;
                     }
 
@@ -96,9 +96,9 @@ void Triangulation::triangulation(std::vector<std::vector<std::vector<int>>>& da
         for (int j = 0; j < numJoint; j++)
         {
             std::vector<int> result;
-            std::cout << "cal3D" << std::endl;
+            //std::cout << "cal3D" << std::endl;
             cal3D(data_left[i][j], data_right[i][j], result);
-            std::cout << "finish" << std::endl;
+            //std::cout << "finish" << std::endl;
             temp.push_back(result);
         }
         data_3d.push_back(temp);
@@ -127,7 +127,7 @@ void Triangulation::cal3D(std::vector<int>& left, std::vector<int>& right, std::
         }
         else
         {
-            std::cout << "frameIndex is different" << std::endl;
+            //std::cout << "frameIndex is different" << std::endl;
             int X = -1; int Y = -1; int Z = -1;
             result = std::vector<int>{ -1,X,Y,Z };
         }
@@ -135,7 +135,7 @@ void Triangulation::cal3D(std::vector<int>& left, std::vector<int>& right, std::
     // at least one isn't detected
     else
     {
-        std::cout << "frameIndex is different" << std::endl;
+        //std::cout << "frameIndex is different" << std::endl;
         int X = -1; int Y = -1; int Z = -1;
         result = std::vector<int>{ -1,X,Y,Z };
     }
@@ -144,11 +144,11 @@ void Triangulation::cal3D(std::vector<int>& left, std::vector<int>& right, std::
 void Triangulation::arrangeData(std::vector<std::vector<std::vector<int>>>& data_3d, std::vector<std::vector<std::vector<std::vector<int>>>>& posSaver)
 {
     // already first 3d calculation done
-    std::cout << "posSaver.size()=" << posSaver.size() << std::endl;
+    //std::cout << "posSaver.size()=" << posSaver.size() << std::endl;
     if (!posSaver.empty())
     {
         std::vector<std::vector<std::vector<int>>> all; //all human data
-        std::cout << "data3d.size()=" << data_3d.size() << std::endl;
+        //std::cout << "data3d.size()=" << data_3d.size() << std::endl;
         // for each human
         for (int i = 0; i < data_3d.size(); i++)
         {
@@ -192,7 +192,7 @@ void Triangulation::arrangeData(std::vector<std::vector<std::vector<int>>>& data
     // first detection
     else
     {
-        std::cout << "first 3d points :: data3d.size()=" << data_3d.size() << std::endl;
+        //std::cout << "first 3d points :: data3d.size()=" << data_3d.size() << std::endl;
         posSaver.push_back(data_3d);
     }
 }

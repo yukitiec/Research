@@ -1,10 +1,10 @@
 #include "stdafx.h"
 #include "optflow.h"
 
+
 void OpticalFlow::main(cv::Mat1b& frame, const int& frameIndex, std::vector<std::vector<std::vector<std::vector<int>>>>& posSaver,
-    std::queue<std::vector<std::vector<cv::Mat1b>>>& queueYoloOldImgSearch, std::queue<std::vector<std::vector<cv::Rect2i>>>& queueYoloSearchRoi,
-    std::queue<std::vector<std::vector<cv::Mat1b>>>& queueOFOldImgSearch, std::queue<std::vector<std::vector<cv::Rect2i>>>& queueOFSearchRoi,
-    std::queue<std::vector<std::vector<std::vector<float>>>>& queuePreviousMove, std::queue<std::vector<std::vector<cv::Ptr<cv::DISOpticalFlow>>>>& queueDIS,
+    std::queue<Yolo2optflow>& q_yolo2optflow,
+    std::queue<Optflow2optflow>& q_optflow2optflow,
     std::queue<std::vector<std::vector<std::vector<int>>>>& queueTriangulation)
 {
     /* optical flow process for each joints */
@@ -12,22 +12,17 @@ void OpticalFlow::main(cv::Mat1b& frame, const int& frameIndex, std::vector<std:
     std::vector<std::vector<cv::Rect2i>> searchRoi;            //[number of human,6,cv::Rect2i], if tracker was failed, roi.x == -1
     std::vector<std::vector<std::vector<float>>> previousMove; //[number of human,6,movement in x and y] ROI movement of each joint
     std::vector<std::vector<cv::Ptr<cv::DISOpticalFlow>>> previousDIS;
-    getPreviousData(frame, previousImg, searchRoi, previousMove, previousDIS, queueYoloOldImgSearch, queueYoloSearchRoi, queueOFOldImgSearch, queueOFSearchRoi, queuePreviousMove, queueDIS);
-    //std::cout << "finish getting previous data " << std::endl;
-    /* start optical flow process */
+    getPreviousData(frame, previousImg, searchRoi, previousMove, previousDIS, q_yolo2optflow, q_optflow2optflow);
+   
+    /* prepare storage */
     /* for every human */
     std::vector<std::vector<cv::Mat1b>> updatedImgHuman;
     std::vector<std::vector<cv::Rect2i>> updatedSearchRoiHuman;
     std::vector<std::vector<std::vector<float>>> updatedMoveDists;
     std::vector<std::vector<cv::Ptr<cv::DISOpticalFlow>>> updatedDISHuman;
     std::vector<std::vector<std::vector<int>>> updatedPositionsHuman;
-    /*std::cout << "human =" << searchRoi.size() << " !!!!!!!!!!!!" << std::endl;
-    if (!searchRoi.empty())
-    {
-        for (cv::Rect2i& roi : searchRoi[0])
-            std::cout << roi.x << "," << roi.y << "," << roi.width << "," << roi.height << std::endl;
-        std::cout << "previousMove.size()=" << previousMove.size() << ", previousImg.size()=" << previousImg.size() << std::endl;
-    }*/
+
+    //start tracking with optflow
     if (!searchRoi.empty())
     {
         for (int i = 0; i < searchRoi.size(); i++)
@@ -230,15 +225,17 @@ void OpticalFlow::main(cv::Mat1b& frame, const int& frameIndex, std::vector<std:
                 updatedDISHuman.push_back(disJoints);
             }
         }
+
         /* push updated data to queue */
-        queueOFSearchRoi.push(updatedSearchRoiHuman);
+        Optflow2optflow newData;
+        newData.roi = updatedSearchRoiHuman;
         if (!updatedImgHuman.empty())
         {
-            queueOFOldImgSearch.push(updatedImgHuman);
-            queuePreviousMove.push(updatedMoveDists);
-            queueDIS.push(updatedDISHuman);
+            newData.img_search = updatedImgHuman;
+            newData.move = updatedMoveDists;
+            newData.ptr_dis = updatedDISHuman;
         }
-        //std::cout << "save to posSaver! posSaver size=" << posSaver.size() << std::endl;
+        q_optflow2optflow.push(newData);
 
         /* arrange posSaver */
         std::vector<int> pastData;
@@ -322,9 +319,7 @@ void OpticalFlow::main(cv::Mat1b& frame, const int& frameIndex, std::vector<std:
 
 void OpticalFlow::getPreviousData(cv::Mat1b& frame, std::vector<std::vector<cv::Mat1b>>& previousImg, std::vector<std::vector<cv::Rect2i>>& searchRoi,
     std::vector<std::vector<std::vector<float>>>& moveDists, std::vector<std::vector<cv::Ptr<cv::DISOpticalFlow>>>& previousDIS,
-    std::queue<std::vector<std::vector<cv::Mat1b>>>& queueYoloOldImgSearch, std::queue<std::vector<std::vector<cv::Rect2i>>>& queueYoloSearchRoi,
-    std::queue<std::vector<std::vector<cv::Mat1b>>>& queueOFOldImgSearch, std::queue<std::vector<std::vector<cv::Rect2i>>>& queueOFSearchRoi,
-    std::queue<std::vector<std::vector<std::vector<float>>>>& queuePreviousMove, std::queue<std::vector<std::vector<cv::Ptr<cv::DISOpticalFlow>>>>& queueDIS)
+    std::queue<Yolo2optflow>& q_yolo2optflow, std::queue<Optflow2optflow>& q_optflow2optflow)
 {
     /*
     *  if yolo data available -> update if tracking was failed
@@ -334,140 +329,222 @@ void OpticalFlow::getPreviousData(cv::Mat1b& frame, std::vector<std::vector<cv::
     *  get Yolo data and OF data from queue if possible
     *  organize data
     */
-    if (!queueOFOldImgSearch.empty() && !queueOFSearchRoi.empty() && !queuePreviousMove.empty())
+    if (!q_optflow2optflow.empty())
     {
-        previousImg = queueOFOldImgSearch.front();
-        searchRoi = queueOFSearchRoi.front();
-        moveDists = queuePreviousMove.front();
-        queueOFOldImgSearch.pop();
-        queueOFSearchRoi.pop();
-        queuePreviousMove.pop();
-        previousDIS = queueDIS.front();
-        queueDIS.pop();
-
+        Optflow2optflow prevData = q_optflow2optflow.front();
+        q_optflow2optflow.pop();
+        if (!prevData.img_search.empty())
+        {
+            previousImg = prevData.img_search;
+            searchRoi = prevData.roi;
+            moveDists = prevData.move;
+            previousDIS = prevData.ptr_dis;
+        }
+        else if (prevData.img_search.empty() && !prevData.roi.empty())
+            searchRoi = prevData.roi; 
     }
-    else if (queueOFOldImgSearch.empty() && !queueOFSearchRoi.empty())
-    {
-        searchRoi = queueOFSearchRoi.front();
-        queueOFSearchRoi.pop();
-    }
+    
     std::vector<std::vector<cv::Mat1b>> previousYoloImg;
     std::vector<std::vector<cv::Rect2i>> searchYoloRoi;
-    if (!queueYoloOldImgSearch.empty())
+    if (!q_yolo2optflow.empty())
     {
         //std::cout << "yolo data is available" << std::endl;
-        getYoloData(previousYoloImg, searchYoloRoi, queueYoloOldImgSearch, queueYoloSearchRoi);
+        getYoloData(previousYoloImg, searchYoloRoi, q_yolo2optflow);
         /* update data here */
         /* iterate for all human detection */
-        //std::cout << "searchYoloRoi size : " << searchYoloRoi.size() << std::endl;
-        //std::cout << "searchRoi by optical flow size : " << searchRoi.size() << ","<<searchRoi[0].size()<<std::endl;
-        //std::cout << "successful trackers of optical flow : " << previousImg.size() << std::endl;
-        for (int i = 0; i < searchYoloRoi.size(); i++)
-        {
-            //std::cout << i << "-th human" << std::endl;
-            /* some OF tracking were successful */
-            if (!previousImg.empty())
+        if (!previousYoloImg.empty()) {
+            for (int i = 0; i < searchYoloRoi.size(); i++)
             {
-                /* existed human detection */
-                if (i < previousImg.size())
+                //std::cout << i << "-th human" << std::endl;
+                /* some OF tracking were successful */
+                if (!previousImg.empty())
                 {
-                    //std::cout << "previousImg : num of human : " << previousImg.size() << std::endl;
-                    /* for all joints */
-                    int counterJoint = 0;
-                    int counterYoloImg = 0;
-                    int counterTrackerOF = 0; // number of successful trackers by Optical Flow
-                    for (cv::Rect2i& roi : searchRoi[i])
+                    /* existed human detection */
+                    if (i < previousImg.size())
                     {
+                        //std::cout << "previousImg : num of human : " << previousImg.size() << std::endl;
+                        /* for all joints */
+                        int counterJoint = 0;
+                        int counterYoloImg = 0;
+                        int counterTrackerOF = 0; // number of successful trackers by Optical Flow
+                        for (cv::Rect2i& roi : searchRoi[i])
+                        {
 
-                        //std::cout << "update data with Yolo detection : " << counterJoint << "-th joint" << std::endl;
-                        /* tracking is failed -> update data with yolo data */
-                        if (roi.x <= 0)
-                        {
-                            /* yolo detect joints -> update data */
-                            if (searchYoloRoi[i][counterJoint].width > 0)
+                            //std::cout << "update data with Yolo detection : " << counterJoint << "-th joint" << std::endl;
+                            /* tracking is failed -> update data with yolo data */
+                            if (roi.x <= 0)
                             {
-                                //std::cout << "update OF tracker features with yolo detection" << std::endl;
-                                //std::cout << "previousRoi.x=" << searchRoi[i][counterJoint].x << ", width=" << searchRoi[i][counterJoint].width << std::endl;
-                                searchRoi[i][counterJoint] = searchYoloRoi[i][counterJoint];
-                                previousImg[i].insert(previousImg[i].begin() + counterTrackerOF, previousYoloImg[i][counterYoloImg]);
-                                moveDists[i].insert(moveDists[i].begin() + counterTrackerOF, { 0.0,0.0 });
-                                //make new DIS ptr
-                                if (dis_mode == 0) //ultrafast mode
-                                {
-                                    cv::Ptr<cv::DISOpticalFlow> dis = cv::DISOpticalFlow::create(cv::DISOpticalFlow::PRESET_ULTRAFAST);
-                                    //dis->setUseSpatialPropagation(true);
-                                    if (bool_manual_patch_dis)
-                                    {
-                                        dis->setPatchSize(disPatch);
-                                        dis->setPatchStride(disStride);
-                                    }
-                                    previousDIS[i].insert(previousDIS[i].begin() + counterTrackerOF, dis);
-                                }
-                                else if (dis_mode == 1) //fast mode
-                                {
-                                    cv::Ptr<cv::DISOpticalFlow> dis = cv::DISOpticalFlow::create(cv::DISOpticalFlow::PRESET_FAST);
-                                    if (bool_manual_patch_dis)
-                                    {
-                                        dis->setPatchSize(disPatch);
-                                        dis->setPatchStride(disStride);
-                                    }
-                                    //dis->setUseSpatialPropagation(true);
-                                    previousDIS[i].insert(previousDIS[i].begin() + counterTrackerOF, dis);
-                                }
-                                else if (dis_mode == 2) //medium mode
-                                {
-                                    cv::Ptr<cv::DISOpticalFlow> dis = cv::DISOpticalFlow::create(cv::DISOpticalFlow::PRESET_MEDIUM);
-                                    if (bool_manual_patch_dis)
-                                    {
-                                        dis->setPatchSize(disPatch);
-                                        dis->setPatchStride(disStride);
-                                    }
-                                    //dis->setUseSpatialPropagation(true);
-                                    previousDIS[i].insert(previousDIS[i].begin() + counterTrackerOF, dis);
-                                }
-                                //std::cout << "after updating with Yolo data :: previousRoi.x=" << searchRoi[i][counterJoint].x << ", width=" << searchRoi[i][counterJoint].width << std::endl;
-                                counterJoint++;
-                                counterYoloImg++;
-                                counterTrackerOF++;
-                            }
-                            /* yolo can't detect joint -> not updated data */
-                            else
-                            {
-                                //std::cout << "Yolo didn't detect joint" << std::endl;
-                                counterJoint++;
-                            }
-                        }
-                        /* tracking is successful */
-                        else
-                        {
-                            //std::cout << "tracking was successful" << std::endl;
-                            /* update template image with Yolo's one */
-                            if (boolChange)
-                            {
+                                /* yolo detect joints -> update data */
                                 if (searchYoloRoi[i][counterJoint].width > 0)
                                 {
-                                    //if ((float)std::abs((roi.x - searchYoloRoi[i][counterJoint].x)) >= DIF_THRESHOLD || (float)std::abs((searchRoi[i][counterJoint].y - searchYoloRoi[i][counterJoint].y)) >= DIF_THRESHOLD ||
-                                    //    (std::pow(static_cast<float>(roi.x - searchYoloRoi[i][counterJoint].x), 2) + std::pow(static_cast<float>(roi.x - searchYoloRoi[i][counterJoint].x), 2) >= DIF_THRESHOLD * DIF_THRESHOLD))
-                                    //{
                                     //std::cout << "update OF tracker features with yolo detection" << std::endl;
-                                    //std::cout << "====== previousRoi.x=" << searchRoi[i][counterJoint].x << ", width=" << searchRoi[i][counterJoint].width << std::endl;
-                                    if (bool_check_pos)//check position when updating
+                                    //std::cout << "previousRoi.x=" << searchRoi[i][counterJoint].x << ", width=" << searchRoi[i][counterJoint].width << std::endl;
+                                    searchRoi[i][counterJoint] = searchYoloRoi[i][counterJoint];
+                                    previousImg[i].insert(previousImg[i].begin() + counterTrackerOF, previousYoloImg[i][counterYoloImg]);
+                                    moveDists[i].insert(moveDists[i].begin() + counterTrackerOF, { 0.0,0.0 });
+                                    //make new DIS ptr
+                                    if (dis_mode == 0) //ultrafast mode
                                     {
-                                        //current
-                                        float left_current = (float)roi.x;
-                                        float top_current = (float)roi.y;
-                                        float centerX_current = (float)(roi.x + roi.width / 2);
-                                        float centerY_current = (float)(roi.y + roi.height / 2);
-                                        //yolo
-                                        float left_yolo = (float)searchYoloRoi[i][counterJoint].x;
-                                        float top_yolo = (float)searchYoloRoi[i][counterJoint].y;
-                                        float centerX_yolo = (float)(searchYoloRoi[i][counterJoint].x + searchYoloRoi[i][counterJoint].width / 2);
-                                        float centerY_yolo = (float)(searchYoloRoi[i][counterJoint].y + searchYoloRoi[i][counterJoint].height / 2);
-                                        float moveX = std::abs(moveDists[i][counterTrackerOF][0]); float moveY = (moveDists[i][counterTrackerOF][1]);
-                                        //update data with Yolo detection
-                                        if (std::abs((left_current - left_yolo)) >= DIF_THRESHOLD || std::abs((top_current - top_yolo)) >= DIF_THRESHOLD || //position difference
-                                            (std::pow((centerX_current - centerX_yolo), 2) + std::pow((centerY_current - centerY_yolo), 2) >= DIF_THRESHOLD * DIF_THRESHOLD)  //position difference
-                                            )
+                                        cv::Ptr<cv::DISOpticalFlow> dis = cv::DISOpticalFlow::create(cv::DISOpticalFlow::PRESET_ULTRAFAST);
+                                        //dis->setUseSpatialPropagation(true);
+                                        if (bool_manual_patch_dis)
+                                        {
+                                            dis->setPatchSize(disPatch);
+                                            dis->setPatchStride(disStride);
+                                        }
+                                        previousDIS[i].insert(previousDIS[i].begin() + counterTrackerOF, dis);
+                                    }
+                                    else if (dis_mode == 1) //fast mode
+                                    {
+                                        cv::Ptr<cv::DISOpticalFlow> dis = cv::DISOpticalFlow::create(cv::DISOpticalFlow::PRESET_FAST);
+                                        if (bool_manual_patch_dis)
+                                        {
+                                            dis->setPatchSize(disPatch);
+                                            dis->setPatchStride(disStride);
+                                        }
+                                        //dis->setUseSpatialPropagation(true);
+                                        previousDIS[i].insert(previousDIS[i].begin() + counterTrackerOF, dis);
+                                    }
+                                    else if (dis_mode == 2) //medium mode
+                                    {
+                                        cv::Ptr<cv::DISOpticalFlow> dis = cv::DISOpticalFlow::create(cv::DISOpticalFlow::PRESET_MEDIUM);
+                                        if (bool_manual_patch_dis)
+                                        {
+                                            dis->setPatchSize(disPatch);
+                                            dis->setPatchStride(disStride);
+                                        }
+                                        //dis->setUseSpatialPropagation(true);
+                                        previousDIS[i].insert(previousDIS[i].begin() + counterTrackerOF, dis);
+                                    }
+                                    //std::cout << "after updating with Yolo data :: previousRoi.x=" << searchRoi[i][counterJoint].x << ", width=" << searchRoi[i][counterJoint].width << std::endl;
+                                    counterJoint++;
+                                    counterYoloImg++;
+                                    counterTrackerOF++;
+                                }
+                                /* yolo can't detect joint -> not updated data */
+                                else
+                                {
+                                    //std::cout << "Yolo didn't detect joint" << std::endl;
+                                    counterJoint++;
+                                }
+                            }
+                            /* tracking is successful */
+                            else
+                            {
+                                //std::cout << "tracking was successful" << std::endl;
+                                /* update template image with Yolo's one */
+                                if (boolChange)
+                                {
+                                    if (searchYoloRoi[i][counterJoint].width > 0)
+                                    {
+                                        //if ((float)std::abs((roi.x - searchYoloRoi[i][counterJoint].x)) >= DIF_THRESHOLD || (float)std::abs((searchRoi[i][counterJoint].y - searchYoloRoi[i][counterJoint].y)) >= DIF_THRESHOLD ||
+                                        //    (std::pow(static_cast<float>(roi.x - searchYoloRoi[i][counterJoint].x), 2) + std::pow(static_cast<float>(roi.x - searchYoloRoi[i][counterJoint].x), 2) >= DIF_THRESHOLD * DIF_THRESHOLD))
+                                        //{
+                                        //std::cout << "update OF tracker features with yolo detection" << std::endl;
+                                        //std::cout << "====== previousRoi.x=" << searchRoi[i][counterJoint].x << ", width=" << searchRoi[i][counterJoint].width << std::endl;
+                                        if (bool_check_pos)//check position when updating
+                                        {
+                                            //current
+                                            float left_current = (float)roi.x;
+                                            float top_current = (float)roi.y;
+                                            float centerX_current = (float)(roi.x + roi.width / 2);
+                                            float centerY_current = (float)(roi.y + roi.height / 2);
+                                            //yolo
+                                            float left_yolo = (float)searchYoloRoi[i][counterJoint].x;
+                                            float top_yolo = (float)searchYoloRoi[i][counterJoint].y;
+                                            float centerX_yolo = (float)(searchYoloRoi[i][counterJoint].x + searchYoloRoi[i][counterJoint].width / 2);
+                                            float centerY_yolo = (float)(searchYoloRoi[i][counterJoint].y + searchYoloRoi[i][counterJoint].height / 2);
+                                            float moveX = std::abs(moveDists[i][counterTrackerOF][0]); float moveY = (moveDists[i][counterTrackerOF][1]);
+                                            //update data with Yolo detection
+                                            if (std::abs((left_current - left_yolo)) >= DIF_THRESHOLD || std::abs((top_current - top_yolo)) >= DIF_THRESHOLD || //position difference
+                                                (std::pow((centerX_current - centerX_yolo), 2) + std::pow((centerY_current - centerY_yolo), 2) >= DIF_THRESHOLD * DIF_THRESHOLD)  //position difference
+                                                )
+                                            {
+                                                previousImg[i][counterTrackerOF] = previousYoloImg[i][counterYoloImg];
+                                                moveDists[i][counterTrackerOF] = std::vector<float>{ 0.0,0.0 };
+                                                searchRoi[i][counterJoint] = searchYoloRoi[i][counterJoint];
+
+                                                //make new DIS ptr
+                                                if (dis_mode == 0) //ultrafast mode
+                                                {
+                                                    cv::Ptr<cv::DISOpticalFlow> dis = cv::DISOpticalFlow::create(cv::DISOpticalFlow::PRESET_ULTRAFAST);
+                                                    if (bool_manual_patch_dis)
+                                                    {
+                                                        dis->setPatchSize(disPatch);
+                                                        dis->setPatchStride(disStride);
+                                                    }
+                                                    //dis->setUseSpatialPropagation(true);
+                                                    previousDIS[i][counterTrackerOF] = dis;
+                                                }
+                                                else if (dis_mode == 1) //fast mode
+                                                {
+                                                    cv::Ptr<cv::DISOpticalFlow> dis = cv::DISOpticalFlow::create(cv::DISOpticalFlow::PRESET_FAST);
+                                                    if (bool_manual_patch_dis)
+                                                    {
+                                                        dis->setPatchSize(disPatch);
+                                                        dis->setPatchStride(disStride);
+                                                    }
+                                                    //dis->setUseSpatialPropagation(true);
+                                                    previousDIS[i][counterTrackerOF] = dis;
+                                                }
+                                                else if (dis_mode == 2) //medium mode
+                                                {
+                                                    cv::Ptr<cv::DISOpticalFlow> dis = cv::DISOpticalFlow::create(cv::DISOpticalFlow::PRESET_MEDIUM);
+                                                    if (bool_manual_patch_dis)
+                                                    {
+                                                        dis->setPatchSize(disPatch);
+                                                        dis->setPatchStride(disStride);
+                                                    }
+                                                    //dis->setUseSpatialPropagation(true);
+                                                    previousDIS[i][counterTrackerOF] = dis;
+                                                }
+
+                                                //std::cout << "update OF tracker features with yolo detection" << std::endl;
+                                                //std::cout << "====== previousRoi.x=" << searchRoi[i][counterJoint].x << ", width=" << searchRoi[i][counterJoint].width << std::endl;
+                                            }
+                                            else //valid tracking -> only update configuration of search area
+                                            {
+                                                searchRoi[i][counterJoint].width = searchYoloRoi[i][counterJoint].width;
+                                                searchRoi[i][counterJoint].height = searchYoloRoi[i][counterJoint].height;
+                                                previousImg[i][counterTrackerOF] = frame(searchRoi[i][counterJoint]);
+                                                //moveDists[i][counterTrackerOF] = std::vector<float>{ 0.0,0.0 };
+                                                //make new DIS ptr
+                                                if (dis_mode == 0) //ultrafast mode
+                                                {
+                                                    cv::Ptr<cv::DISOpticalFlow> dis = cv::DISOpticalFlow::create(cv::DISOpticalFlow::PRESET_ULTRAFAST);
+                                                    if (bool_manual_patch_dis)
+                                                    {
+                                                        dis->setPatchSize(disPatch);
+                                                        dis->setPatchStride(disStride);
+                                                    }
+                                                    //dis->setUseSpatialPropagation(true);
+                                                    previousDIS[i][counterTrackerOF] = dis;
+                                                }
+                                                else if (dis_mode == 1) //fast mode
+                                                {
+                                                    cv::Ptr<cv::DISOpticalFlow> dis = cv::DISOpticalFlow::create(cv::DISOpticalFlow::PRESET_FAST);
+                                                    if (bool_manual_patch_dis)
+                                                    {
+                                                        dis->setPatchSize(disPatch);
+                                                        dis->setPatchStride(disStride);
+                                                    }
+                                                    //dis->setUseSpatialPropagation(true);
+                                                    previousDIS[i][counterTrackerOF] = dis;
+                                                }
+                                                else if (dis_mode == 2) //medium mode
+                                                {
+                                                    cv::Ptr<cv::DISOpticalFlow> dis = cv::DISOpticalFlow::create(cv::DISOpticalFlow::PRESET_MEDIUM);
+                                                    if (bool_manual_patch_dis)
+                                                    {
+                                                        dis->setPatchSize(disPatch);
+                                                        dis->setPatchStride(disStride);
+                                                    }
+                                                    //dis->setUseSpatialPropagation(true);
+                                                    previousDIS[i][counterTrackerOF] = dis;
+                                                }
+                                            }
+                                        }
+                                        else if (!bool_check_pos) //check position when updating
                                         {
                                             previousImg[i][counterTrackerOF] = previousYoloImg[i][counterYoloImg];
                                             moveDists[i][counterTrackerOF] = std::vector<float>{ 0.0,0.0 };
@@ -508,130 +585,118 @@ void OpticalFlow::getPreviousData(cv::Mat1b& frame, std::vector<std::vector<cv::
                                                 previousDIS[i][counterTrackerOF] = dis;
                                             }
 
-                                            //std::cout << "update OF tracker features with yolo detection" << std::endl;
-                                            //std::cout << "====== previousRoi.x=" << searchRoi[i][counterJoint].x << ", width=" << searchRoi[i][counterJoint].width << std::endl;
                                         }
-                                        else //valid tracking -> only update configuration of search area
-                                        {
-                                            searchRoi[i][counterJoint].width = searchYoloRoi[i][counterJoint].width;
-                                            searchRoi[i][counterJoint].height = searchYoloRoi[i][counterJoint].height;
-                                            previousImg[i][counterTrackerOF] = frame(searchRoi[i][counterJoint]);
-                                            //moveDists[i][counterTrackerOF] = std::vector<float>{ 0.0,0.0 };
-                                            //make new DIS ptr
-                                            if (dis_mode == 0) //ultrafast mode
-                                            {
-                                                cv::Ptr<cv::DISOpticalFlow> dis = cv::DISOpticalFlow::create(cv::DISOpticalFlow::PRESET_ULTRAFAST);
-                                                if (bool_manual_patch_dis)
-                                                {
-                                                    dis->setPatchSize(disPatch);
-                                                    dis->setPatchStride(disStride);
-                                                }
-                                                //dis->setUseSpatialPropagation(true);
-                                                previousDIS[i][counterTrackerOF] = dis;
-                                            }
-                                            else if (dis_mode == 1) //fast mode
-                                            {
-                                                cv::Ptr<cv::DISOpticalFlow> dis = cv::DISOpticalFlow::create(cv::DISOpticalFlow::PRESET_FAST);
-                                                if (bool_manual_patch_dis)
-                                                {
-                                                    dis->setPatchSize(disPatch);
-                                                    dis->setPatchStride(disStride);
-                                                }
-                                                //dis->setUseSpatialPropagation(true);
-                                                previousDIS[i][counterTrackerOF] = dis;
-                                            }
-                                            else if (dis_mode == 2) //medium mode
-                                            {
-                                                cv::Ptr<cv::DISOpticalFlow> dis = cv::DISOpticalFlow::create(cv::DISOpticalFlow::PRESET_MEDIUM);
-                                                if (bool_manual_patch_dis)
-                                                {
-                                                    dis->setPatchSize(disPatch);
-                                                    dis->setPatchStride(disStride);
-                                                }
-                                                //dis->setUseSpatialPropagation(true);
-                                                previousDIS[i][counterTrackerOF] = dis;
-                                            }
-                                        }
+                                        //std::cout << " ~~~~~~~~~~~~~ after updating with Yolo data :: previousRoi.x=" << searchRoi[i][counterJoint].x << ", width=" << searchRoi[i][counterJoint].width << std::endl;
+                                        //}
+                                        counterYoloImg++;
                                     }
-                                    else if (!bool_check_pos) //check position when updating
-                                    {
-                                        previousImg[i][counterTrackerOF] = previousYoloImg[i][counterYoloImg];
-                                        moveDists[i][counterTrackerOF] = std::vector<float>{ 0.0,0.0 };
-                                        searchRoi[i][counterJoint] = searchYoloRoi[i][counterJoint];
-
-                                        //make new DIS ptr
-                                        if (dis_mode == 0) //ultrafast mode
-                                        {
-                                            cv::Ptr<cv::DISOpticalFlow> dis = cv::DISOpticalFlow::create(cv::DISOpticalFlow::PRESET_ULTRAFAST);
-                                            if (bool_manual_patch_dis)
-                                            {
-                                                dis->setPatchSize(disPatch);
-                                                dis->setPatchStride(disStride);
-                                            }
-                                            //dis->setUseSpatialPropagation(true);
-                                            previousDIS[i][counterTrackerOF] = dis;
-                                        }
-                                        else if (dis_mode == 1) //fast mode
-                                        {
-                                            cv::Ptr<cv::DISOpticalFlow> dis = cv::DISOpticalFlow::create(cv::DISOpticalFlow::PRESET_FAST);
-                                            if (bool_manual_patch_dis)
-                                            {
-                                                dis->setPatchSize(disPatch);
-                                                dis->setPatchStride(disStride);
-                                            }
-                                            //dis->setUseSpatialPropagation(true);
-                                            previousDIS[i][counterTrackerOF] = dis;
-                                        }
-                                        else if (dis_mode == 2) //medium mode
-                                        {
-                                            cv::Ptr<cv::DISOpticalFlow> dis = cv::DISOpticalFlow::create(cv::DISOpticalFlow::PRESET_MEDIUM);
-                                            if (bool_manual_patch_dis)
-                                            {
-                                                dis->setPatchSize(disPatch);
-                                                dis->setPatchStride(disStride);
-                                            }
-                                            //dis->setUseSpatialPropagation(true);
-                                            previousDIS[i][counterTrackerOF] = dis;
-                                        }
-
-                                    }
-                                    //std::cout << " ~~~~~~~~~~~~~ after updating with Yolo data :: previousRoi.x=" << searchRoi[i][counterJoint].x << ", width=" << searchRoi[i][counterJoint].width << std::endl;
-                                    //}
-                                    counterYoloImg++;
                                 }
+                                /* not update template images -> keep tracking */
+                                else
+                                {
+                                    if (searchYoloRoi[i][counterJoint].x >= 0)
+                                        counterYoloImg++;
+                                }
+                                counterJoint++;
+                                counterTrackerOF++;
+                                //std::cout << "update iterator" << std::endl;
                             }
-                            /* not update template images -> keep tracking */
+                        }
+                    }
+                    /* new human detected */
+                    else
+                    {
+                        //std::cout << "new human was detected by Yolo " << std::endl;
+                        int counterJoint = 0;
+                        int counterYoloImg = 0;
+                        std::vector<cv::Rect2i> joints;
+                        std::vector<cv::Mat1b> imgJoints;
+                        std::vector<std::vector<float>> moveJoints;
+                        std::vector<cv::Ptr<cv::DISOpticalFlow>> disJoints;
+                        /* for every joints */
+                        for (const cv::Rect2i& roi : searchYoloRoi[i])
+                        {
+                            /* keypoint is found */
+                            if (roi.x > 0)
+                            {
+                                joints.push_back(roi);
+                                imgJoints.push_back(previousYoloImg[i][counterYoloImg]);
+                                moveJoints.push_back(defaultMove);
+
+                                //make new DIS ptr
+                                if (dis_mode == 0) //ultrafast mode
+                                {
+                                    cv::Ptr<cv::DISOpticalFlow> dis = cv::DISOpticalFlow::create(cv::DISOpticalFlow::PRESET_ULTRAFAST);
+                                    if (bool_manual_patch_dis)
+                                    {
+                                        dis->setPatchSize(disPatch);
+                                        dis->setPatchStride(disStride);
+                                    }
+                                    //dis->setUseSpatialPropagation(true);
+                                    disJoints.push_back(dis);
+                                }
+                                else if (dis_mode == 1) //fast mode
+                                {
+                                    cv::Ptr<cv::DISOpticalFlow> dis = cv::DISOpticalFlow::create(cv::DISOpticalFlow::PRESET_FAST);
+                                    if (bool_manual_patch_dis)
+                                    {
+                                        dis->setPatchSize(disPatch);
+                                        dis->setPatchStride(disStride);
+                                    }
+                                    //dis->setUseSpatialPropagation(true);
+                                    disJoints.push_back(dis);
+                                }
+                                else if (dis_mode == 2) //medium mode
+                                {
+                                    cv::Ptr<cv::DISOpticalFlow> dis = cv::DISOpticalFlow::create(cv::DISOpticalFlow::PRESET_MEDIUM);
+                                    if (bool_manual_patch_dis)
+                                    {
+                                        dis->setPatchSize(disPatch);
+                                        dis->setPatchStride(disStride);
+                                    }
+                                    //dis->setUseSpatialPropagation(true);
+                                    disJoints.push_back(dis);
+                                }
+                                counterJoint++;
+                                counterYoloImg++;
+                            }
+                            /* keypoints not found */
                             else
                             {
-                                if (searchYoloRoi[i][counterJoint].x >= 0)
-                                    counterYoloImg++;
+                                joints.push_back(roi);
+                                counterJoint++;
                             }
-                            counterJoint++;
-                            counterTrackerOF++;
-                            //std::cout << "update iterator" << std::endl;
+                        }
+                        searchRoi.push_back(joints);
+                        if (!imgJoints.empty())
+                        {
+                            previousImg.push_back(imgJoints);
+                            moveDists.push_back(moveJoints);
+                            previousDIS.push_back(disJoints);
                         }
                     }
                 }
-                /* new human detected */
+                /* no OF tracking was successful or first yolo detection */
                 else
                 {
-                    //std::cout << "new human was detected by Yolo " << std::endl;
+                    searchRoi = std::vector<std::vector<cv::Rect2i>>(); // initialize searchRoi for avoiding data
+                    //std::cout << "Optical Flow :: failed or first Yolo detection " << std::endl;
                     int counterJoint = 0;
                     int counterYoloImg = 0;
                     std::vector<cv::Rect2i> joints;
                     std::vector<cv::Mat1b> imgJoints;
                     std::vector<std::vector<float>> moveJoints;
+                    std::vector<std::vector<cv::Point2f>> features;
                     std::vector<cv::Ptr<cv::DISOpticalFlow>> disJoints;
                     /* for every joints */
                     for (const cv::Rect2i& roi : searchYoloRoi[i])
                     {
                         /* keypoint is found */
-                        if (roi.x > 0)
+                        if (roi.width > 0)
                         {
                             joints.push_back(roi);
                             imgJoints.push_back(previousYoloImg[i][counterYoloImg]);
-                            moveJoints.push_back(defaultMove);
-
+                            moveJoints.push_back({ 0.0, 0.0 });
                             //make new DIS ptr
                             if (dis_mode == 0) //ultrafast mode
                             {
@@ -647,25 +712,26 @@ void OpticalFlow::getPreviousData(cv::Mat1b& frame, std::vector<std::vector<cv::
                             else if (dis_mode == 1) //fast mode
                             {
                                 cv::Ptr<cv::DISOpticalFlow> dis = cv::DISOpticalFlow::create(cv::DISOpticalFlow::PRESET_FAST);
+                                //dis->setUseSpatialPropagation(true);
                                 if (bool_manual_patch_dis)
                                 {
                                     dis->setPatchSize(disPatch);
                                     dis->setPatchStride(disStride);
                                 }
-                                //dis->setUseSpatialPropagation(true);
                                 disJoints.push_back(dis);
                             }
                             else if (dis_mode == 2) //medium mode
                             {
                                 cv::Ptr<cv::DISOpticalFlow> dis = cv::DISOpticalFlow::create(cv::DISOpticalFlow::PRESET_MEDIUM);
+                                //dis->setUseSpatialPropagation(true);
                                 if (bool_manual_patch_dis)
                                 {
                                     dis->setPatchSize(disPatch);
                                     dis->setPatchStride(disStride);
                                 }
-                                //dis->setUseSpatialPropagation(true);
                                 disJoints.push_back(dis);
                             }
+
                             counterJoint++;
                             counterYoloImg++;
                         }
@@ -685,95 +751,18 @@ void OpticalFlow::getPreviousData(cv::Mat1b& frame, std::vector<std::vector<cv::
                     }
                 }
             }
-            /* no OF tracking was successful or first yolo detection */
-            else
-            {
-                searchRoi = std::vector<std::vector<cv::Rect2i>>(); // initialize searchRoi for avoiding data
-                //std::cout << "Optical Flow :: failed or first Yolo detection " << std::endl;
-                int counterJoint = 0;
-                int counterYoloImg = 0;
-                std::vector<cv::Rect2i> joints;
-                std::vector<cv::Mat1b> imgJoints;
-                std::vector<std::vector<float>> moveJoints;
-                std::vector<std::vector<cv::Point2f>> features;
-                std::vector<cv::Ptr<cv::DISOpticalFlow>> disJoints;
-                /* for every joints */
-                for (const cv::Rect2i& roi : searchYoloRoi[i])
-                {
-                    /* keypoint is found */
-                    if (roi.width > 0)
-                    {
-                        joints.push_back(roi);
-                        imgJoints.push_back(previousYoloImg[i][counterYoloImg]);
-                        moveJoints.push_back({ 0.0, 0.0 });
-                        //make new DIS ptr
-                        if (dis_mode == 0) //ultrafast mode
-                        {
-                            cv::Ptr<cv::DISOpticalFlow> dis = cv::DISOpticalFlow::create(cv::DISOpticalFlow::PRESET_ULTRAFAST);
-                            if (bool_manual_patch_dis)
-                            {
-                                dis->setPatchSize(disPatch);
-                                dis->setPatchStride(disStride);
-                            }
-                            //dis->setUseSpatialPropagation(true);
-                            disJoints.push_back(dis);
-                        }
-                        else if (dis_mode == 1) //fast mode
-                        {
-                            cv::Ptr<cv::DISOpticalFlow> dis = cv::DISOpticalFlow::create(cv::DISOpticalFlow::PRESET_FAST);
-                            //dis->setUseSpatialPropagation(true);
-                            if (bool_manual_patch_dis)
-                            {
-                                dis->setPatchSize(disPatch);
-                                dis->setPatchStride(disStride);
-                            }
-                            disJoints.push_back(dis);
-                        }
-                        else if (dis_mode == 2) //medium mode
-                        {
-                            cv::Ptr<cv::DISOpticalFlow> dis = cv::DISOpticalFlow::create(cv::DISOpticalFlow::PRESET_MEDIUM);
-                            //dis->setUseSpatialPropagation(true);
-                            if (bool_manual_patch_dis)
-                            {
-                                dis->setPatchSize(disPatch);
-                                dis->setPatchStride(disStride);
-                            }
-                            disJoints.push_back(dis);
-                        }
-
-                        counterJoint++;
-                        counterYoloImg++;
-                    }
-                    /* keypoints not found */
-                    else
-                    {
-                        joints.push_back(roi);
-                        counterJoint++;
-                    }
-                }
-                searchRoi.push_back(joints);
-                if (!imgJoints.empty())
-                {
-                    previousImg.push_back(imgJoints);
-                    moveDists.push_back(moveJoints);
-                    previousDIS.push_back(disJoints);
-                }
-            }
         }
     }
 }
 
 void OpticalFlow::getYoloData(std::vector<std::vector<cv::Mat1b>>& previousYoloImg, std::vector<std::vector<cv::Rect2i>>& searchYoloRoi,
-    std::queue<std::vector<std::vector<cv::Mat1b>>>& queueYoloOldImgSearch, std::queue<std::vector<std::vector<cv::Rect2i>>>& queueYoloSearchRoi)
+    std::queue<Yolo2optflow>& q_yolo2optflow)
 {
+    Yolo2optflow prevData = q_yolo2optflow.front();
+    q_yolo2optflow.pop();
     //std::unique_lock<std::mutex> lock(mtxYolo);
-    if (!queueYoloOldImgSearch.empty())
-    {
-        previousYoloImg = queueYoloOldImgSearch.front();
-        queueYoloOldImgSearch.pop();
-    }
-    searchYoloRoi = queueYoloSearchRoi.front();
-    queueYoloSearchRoi.pop();
+    if (!prevData.img_search.empty()) previousYoloImg = prevData.img_search;
+    searchYoloRoi = prevData.roi;
 }
 
 void OpticalFlow::opticalFlow(const cv::Mat1b frame, const int& frameIndex,

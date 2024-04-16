@@ -1,6 +1,5 @@
 #pragma once
 
-
 #ifndef GLOBAL_PARAMETERS_H
 #define GLOBAL_PARAMETERS_H
 
@@ -12,18 +11,7 @@ extern std::mutex mtxRobot;
 extern std::queue<std::array<cv::Mat1b, 2>> queueFrame;
 extern std::queue<int> queueFrameIndex;
 /* yolo and optical flow */
-/* left */
-extern std::queue<std::vector<std::vector<cv::Mat1b>>> queueYoloOldImgSearch_left;      // queue for old image for optical flow. vector size is [num human,6]
-extern std::queue<std::vector<std::vector<cv::Rect2i>>> queueYoloSearchRoi_left;        // queue for search roi for optical flow. vector size is [num human,6]
-extern std::queue<std::vector<std::vector<cv::Mat1b>>> queueOFOldImgSearch_left;        // queue for old image for optical flow. vector size is [num human,6]
-extern std::queue<std::vector<std::vector<cv::Rect2i>>> queueOFSearchRoi_left;          // queue for search roi for optical flow. vector size is [num human,6]
-extern std::queue<std::vector<std::vector<std::vector<float>>>> queuePreviousMove_left; // queue for saving previous ROI movement : [num human,6 joints, 2D movements]
-/* right */
-extern std::queue<std::vector<std::vector<cv::Mat1b>>> queueYoloOldImgSearch_right;      // queue for old image for optical flow. vector size is [num human,6]
-extern std::queue<std::vector<std::vector<cv::Rect2i>>> queueYoloSearchRoi_right;        // queue for search roi for optical flow. vector size is [num human,6]
-extern std::queue<std::vector<std::vector<cv::Mat1b>>> queueOFOldImgSearch_right;        // queue for old image for optical flow. vector size is [num human,6]
-extern std::queue<std::vector<std::vector<cv::Rect2i>>> queueOFSearchRoi_right;          // queue for search roi for optical flow. vector size is [num human,6]
-extern std::queue<std::vector<std::vector<std::vector<float>>>> queuePreviousMove_right; // queue for saving previous ROI movement : [num human,6 joints, 2D movements]
+
 /*3D position*/
 extern std::queue<std::vector<std::vector<std::vector<int>>>> queueTriangulation_left;
 extern std::queue<std::vector<std::vector<std::vector<int>>>> queueTriangulation_right;
@@ -49,12 +37,13 @@ extern const int roiWidthOF;
 extern const int roiHeightOF;
 extern const int roiWidthYolo;
 extern const int roiHeightYolo;
-extern const int MoveThreshold; //cancell background
+extern const float MoveThreshold; //cancell background
 extern const float epsironMove;//half range of back ground effect:: a-epsironMove<=flow<=a+epsironMove
 /* dense optical flow skip rate */
 extern const int skipPixel;
 extern const float DIF_THRESHOLD; //threshold for adapting yolo detection's roi
 extern const float MIN_MOVE; //minimum opticalflow movement
+extern const float MAX_MOVE;
 /*if exchange template of Yolo */
 extern const bool boolChange;
 /* save date */
@@ -73,4 +62,23 @@ extern const cv::Mat cameraMatrix;
 extern const cv::Mat distCoeffs;
 /* transformation matrix from camera coordinate to robot base coordinate */
 extern const std::vector<std::vector<float>> transform_cam2base;
+
+//structure
+struct Yolo2optflow {
+	std::vector<std::vector<cv::Rect2i>> roi; //search ROI
+	std::vector<std::vector<cv::Mat1b>> img_search; //search background img
+};
+
+struct Optflow2optflow {
+	std::vector<std::vector<cv::Rect2i>> roi; //search ROI
+	std::vector<std::vector<cv::Mat1b>> img_search; //search img
+	std::vector<std::vector<std::vector<float>>> move; //previous target movement
+	std::vector<std::vector<cv::Ptr<cv::DISOpticalFlow>>> ptr_dis; //DIS pointer
+};
+
+//queue
+extern std::queue<Yolo2optflow> q_yolo2optflow_left, q_yolo2optflow_right;
+extern std::queue<Optflow2optflow> q_optflow2optflow_left, q_optflow2optflow_right;
+
+
 #endif

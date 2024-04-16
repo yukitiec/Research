@@ -6,7 +6,6 @@
 #include "stdafx.h"
 #include "global_parameters.h"
 
-std::vector<float> defaultMove{ 0.0,0.0 };
 extern const float DIF_THRESHOLD;
 extern const float MIN_MOVE; //minimum opticalflow movement
 extern const int roiWidthOF;
@@ -15,9 +14,15 @@ extern const int dense_vel_method;
 extern const float MoveThreshold;
 extern const float MAX_MOVE;
 extern const bool boolChange;
+extern const bool bool_dynamic_roi; //adopt dynamic roi
+extern const bool bool_rotate_roi;
 
 extern std::queue<std::array<cv::Mat1b, 2>> queueFrame;
 extern std::queue<int> queueFrameIndex;
+
+//queue
+extern std::queue<Yolo2optflow> q_yolo2optflow_left, q_yolo2optflow_right;
+extern std::queue<Optflow2optflow> q_optflow2optflow_left, q_optflow2optflow_right;
 
 class OpticalFlow
 {
@@ -43,6 +48,7 @@ private:
     const int disStride = 1;
     const bool bool_check_pos = false; //false :: whether update roi all time with Yolo
     const float min_move_track = 0.0; //minimum movement by optflow between each detection frame
+    const std::vector<float> defaultMove{ 0.0,0.0 };
 public:
     OpticalFlow()
     {
@@ -50,20 +56,17 @@ public:
     }
 
     void main(cv::Mat1b& frame, const int& frameIndex, std::vector<std::vector<std::vector<std::vector<int>>>>& posSaver,
-        std::queue<std::vector<std::vector<cv::Mat1b>>>& queueYoloOldImgSearch, std::queue<std::vector<std::vector<cv::Rect2i>>>& queueYoloSearchRoi,
-        std::queue<std::vector<std::vector<cv::Mat1b>>>& queueOFOldImgSearch, std::queue<std::vector<std::vector<cv::Rect2i>>>& queueOFSearchRoi,
-        std::queue<std::vector<std::vector<std::vector<float>>>>& queuePreviousMove, std::queue<std::vector<std::vector<cv::Ptr<cv::DISOpticalFlow>>>>& queueDIS,
+        std::queue<Yolo2optflow>& q_yolo2optflow,
+        std::queue<Optflow2optflow>& q_optflow2optflow,
         std::queue<std::vector<std::vector<std::vector<int>>>>& queueTriangulation);
 
     void getPreviousData(cv::Mat1b& frame, std::vector<std::vector<cv::Mat1b>>& previousImg, std::vector<std::vector<cv::Rect2i>>& searchRoi,
         std::vector<std::vector<std::vector<float>>>& moveDists, std::vector<std::vector<cv::Ptr<cv::DISOpticalFlow>>>& previousDIS,
-        std::queue<std::vector<std::vector<cv::Mat1b>>>& queueYoloOldImgSearch, std::queue<std::vector<std::vector<cv::Rect2i>>>& queueYoloSearchRoi,
-        std::queue<std::vector<std::vector<cv::Mat1b>>>& queueOFOldImgSearch, std::queue<std::vector<std::vector<cv::Rect2i>>>& queueOFSearchRoi,
-        std::queue<std::vector<std::vector<std::vector<float>>>>& queuePreviousMove, std::queue<std::vector<std::vector<cv::Ptr<cv::DISOpticalFlow>>>>& queueDIS);
+        std::queue<Yolo2optflow>& q_yolo2optflow, std::queue<Optflow2optflow>& q_optflow2optflow);
 
 
     void getYoloData(std::vector<std::vector<cv::Mat1b>>& previousYoloImg, std::vector<std::vector<cv::Rect2i>>& searchYoloRoi,
-        std::queue<std::vector<std::vector<cv::Mat1b>>>& queueYoloOldImgSearch, std::queue<std::vector<std::vector<cv::Rect2i>>>& queueYoloSearchRoi);
+        std::queue<Yolo2optflow>& q_yolo2optflow);
 
     void opticalFlow(const cv::Mat1b frame, const int& frameIndex,
         cv::Mat1b& previousImg, cv::Rect2i& searchRoi, std::vector<float>& previousMove, cv::Ptr<cv::DISOpticalFlow>& dis,

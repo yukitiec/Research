@@ -1,9 +1,9 @@
 #include "stdafx.h"
 #include "yolo_batch.h"
 
-void YOLOPoseBatch::detect(cv::Mat1b& frame, int& frameIndex, int& counter, std::vector<std::vector<std::vector<std::vector<int>>>>& posSaver_left, std::vector<std::vector<std::vector<std::vector<int>>>>& posSaver_right,
-    std::queue<std::vector<std::vector<cv::Mat1b>>>& queueYoloOldImgSearch_left, std::queue<std::vector<std::vector<cv::Rect2i>>>& queueYoloSearchRoi_left,
-    std::queue<std::vector<std::vector<cv::Mat1b>>>& queueYoloOldImgSearch_right, std::queue<std::vector<std::vector<cv::Rect2i>>>& queueYoloSearchRoi_right) //, const int frameIndex, std::vector<std::vector<cv::Rect2i>>& posSaver, std::vector<std::vector<int>>& classSaver)
+void YOLOPoseBatch::detect(cv::Mat1b& frame, int& frameIndex, int& counter, 
+    std::vector<std::vector<std::vector<std::vector<int>>>>& posSaver_left, std::vector<std::vector<std::vector<std::vector<int>>>>& posSaver_right,
+    std::queue<Yolo2optflow>& q_yolo2optflow_left, std::queue<Yolo2optflow>& q_yolo2optflow_right)
 {
     /* inference by YOLO
      *  Args:
@@ -17,30 +17,17 @@ void YOLOPoseBatch::detect(cv::Mat1b& frame, int& frameIndex, int& counter, std:
      /* preprocess img */
     torch::Tensor imgTensor;
     preprocessImg(frame, imgTensor);
-    // std::cout << "frame size:" << frame.cols << "," << frame.rows << std::endl;
-    // std::cout << "finish preprocess" << std::endl;
 
-    // std::cout << imgTensor.sizes() << std::endl;
     /* inference */
     torch::Tensor preds;
 
     std::vector<cv::Rect2i> roiLatest;
-    /* get latest roi for comparing new detection */
-    /*
-    if (!queueOFSearchRoi.empty())
-    {
-      getLatestRoi(roiLatest);
-    }
-    */
-    /* wrap to disable grad calculation */
     {
         torch::NoGradGuard no_grad;
         preds = mdl.forward({ imgTensor }).toTensor(); // preds shape : [1,6,2100]
     }
     // std::cout << "finish inference" << std::endl;
     preds = preds.permute({ 0, 2, 1 }); // change order : (1,56,2100) -> (1,2100,56)
-    // std::cout << "preds size:" << preds.sizes() << std::endl;
-    // std::cout << "preds size : " << preds << std::endl;
     std::vector<torch::Tensor> detectedBoxesHuman; //(n,56)
     /*detect human */
     nonMaxSuppressionHuman(preds, detectedBoxesHuman, ConfThreshold, IoUThreshold);
@@ -54,7 +41,7 @@ void YOLOPoseBatch::detect(cv::Mat1b& frame, int& frameIndex, int& counter, std:
         //std::cout << "Human detected!" << std::endl;
         keyPointsExtractor(detectedBoxesHuman, keyPoints, humanPos, ConfThreshold);
         /*push updated data to queue*/
-        push2Queue(frame, frameIndex, keyPoints, roiLatest, humanPos, posSaver_left, posSaver_right, queueYoloOldImgSearch_left, queueYoloSearchRoi_left, queueYoloOldImgSearch_right, queueYoloSearchRoi_right);
+        push2Queue(frame, frameIndex, keyPoints, roiLatest, humanPos, posSaver_left, posSaver_right, q_yolo2optflow_left, q_yolo2optflow_right);
         // std::cout << "frame size:" << frame.cols << "," << frame.rows << std::endl;
         /* draw keypoints in the frame */
         //drawCircle(frame, keyPoints, counter);
@@ -65,7 +52,7 @@ void YOLOPoseBatch::preprocessImg(cv::Mat1b& frame, torch::Tensor& imgTensor)
 {
     // run
     cv::Mat yoloimg; // define yolo img type
-    cv::imwrite("input.jpg", frame);
+    //cv::imwrite("input.jpg", frame);
     cv::cvtColor(frame, yoloimg, cv::COLOR_GRAY2RGB);
     cv::resize(yoloimg, yoloimg, YOLOSize);
     //cv::imwrite("yoloimg.jpg", yoloimg);
@@ -105,13 +92,13 @@ void YOLOPoseBatch::nonMaxSuppressionHuman(torch::Tensor& prediction, std::vecto
         else
         {
             // std::cout << "top defined" << std::endl;
-            if (x[0][0].item<int>() <= originalWidth)
+            if (x[0][0].item<int>() <= boundary_img)
             {
                 //std::cout << "first Human is left" << std::endl;
                 detectedBoxesHuman.push_back(x[0].cpu());
                 boolLeft = true;
             }
-            else if (x[0][0].item<int>() > originalWidth)
+            else if (x[0][0].item<int>() > boundary_img)
             {
                 //std::cout << "first human is right" << std::endl;
                 detectedBoxesHuman.push_back(x[0].cpu());
@@ -155,7 +142,7 @@ void YOLOPoseBatch::nms(torch::Tensor& x, std::vector<torch::Tensor>& detectedBo
     {
         if (boolLeft && boolRight) break;
         //detect only 1 human in each image
-        if ((x[i][0].item<int>() <= originalWidth && !boolLeft) || (x[i][0].item<int>() > originalWidth && !boolRight))
+        if ((x[i][0].item<int>() <= boundary_img && !boolLeft) || (x[i][0].item<int>() > boundary_img && !boolRight))
         {
             box = xywh2xyxy(x[i].slice(0, 0, 4)); //(xCenter,yCenter,width,height) -> (left,top,right,bottom)
 
@@ -175,8 +162,8 @@ void YOLOPoseBatch::nms(torch::Tensor& x, std::vector<torch::Tensor>& detectedBo
             if (addBox)
             {
                 detectedBoxes.push_back(x[i].cpu());
-                if (x[i][0].item<int>() <= originalWidth && !boolLeft) boolLeft = true;
-                if (x[i][0].item<int>() > originalWidth && !boolRight) boolRight = true;
+                if (x[i][0].item<int>() <= boundary_img && !boolLeft) boolLeft = true;
+                if (x[i][0].item<int>() > boundary_img && !boolRight) boolRight = true;
             }
         }
     }
@@ -260,14 +247,15 @@ void YOLOPoseBatch::drawCircle(cv::Mat1b& frame, std::vector<std::vector<std::ve
 }
 
 void YOLOPoseBatch::push2Queue(cv::Mat1b& frame, int& frameIndex, std::vector<std::vector<std::vector<int>>>& keyPoints,
-    std::vector<cv::Rect2i>& roiLatest, std::vector<int>& humanPos, std::vector<std::vector<std::vector<std::vector<int>>>>& posSaver_left, std::vector<std::vector<std::vector<std::vector<int>>>>& posSaver_right,
-    std::queue<std::vector<std::vector<cv::Mat1b>>>& queueYoloOldImgSearch_left, std::queue<std::vector<std::vector<cv::Rect2i>>>& queueYoloSearchRoi_left,
-    std::queue<std::vector<std::vector<cv::Mat1b>>>& queueYoloOldImgSearch_right, std::queue<std::vector<std::vector<cv::Rect2i>>>& queueYoloSearchRoi_right)
+    std::vector<cv::Rect2i>& roiLatest, std::vector<int>& humanPos, 
+    std::vector<std::vector<std::vector<std::vector<int>>>>& posSaver_left, std::vector<std::vector<std::vector<std::vector<int>>>>& posSaver_right,
+    std::queue<Yolo2optflow>& q_yolo2optflow_left, std::queue<Yolo2optflow>& q_yolo2optflow_right)
 {
     /* check roi Latest
      * if tracking was successful -> update and
      * else : update roi and imgSearch and calculate features. push data to queue
      */
+    bool bool_left;//left image or right image
     if (!keyPoints.empty())
     {
         std::vector<std::vector<cv::Rect2i>> humanJoints_left, humanJoints_right; // for every human
@@ -283,44 +271,297 @@ void YOLOPoseBatch::push2Queue(cv::Mat1b& frame, int& frameIndex, std::vector<st
             if (humanPos[i] == LEFT)
             {
                 //std::cout << "left" << std::endl;
-                /* for every joints */
-                for (int j = 0; j < keyPoints[i].size(); j++)
+                /* for every joints : (ls,rs,le,re,lw,rw) */
+                if (bool_dynamic_roi) //dynamic roi
                 {
-                    organize_left(frame, frameIndex, keyPoints[i][j], joints, imgJoint, jointsCenter);
+                    bool_left = true;
+                    std::vector<float> default_distances(num_joints, max_half_diagonal);
+                    std::vector<std::vector<float>>  distances(num_joints, default_distances);
+                    organizeRoi(frame, frameIndex, bool_left, keyPoints[i], distances, joints, imgJoint, jointsCenter);
+                    humanJoints_left.push_back(joints);
+                    if (!imgJoint.empty())
+                    {
+                        imgHuman_left.push_back(imgJoint);
+                    }
+                    humanJointsCenter_left.push_back(jointsCenter);
                 }
-                humanJoints_left.push_back(joints);
-                if (!imgJoint.empty())
+                else if (!bool_dynamic_roi) //static roi
                 {
-                    imgHuman_left.push_back(imgJoint);
+                    for (int j = 0; j < keyPoints[i].size(); j++)
+                    {
+                        organize_left(frame, frameIndex, keyPoints[i][j], joints, imgJoint, jointsCenter);
+                    }
+                    humanJoints_left.push_back(joints);
+                    if (!imgJoint.empty())
+                    {
+                        imgHuman_left.push_back(imgJoint);
+                    }
+                    humanJointsCenter_left.push_back(jointsCenter);
                 }
-                humanJointsCenter_left.push_back(jointsCenter);
             }
             //right person
             else
             {
+                if (bool_dynamic_roi) //dynamic roi
+                {
+                    bool_left = false;
+                    std::vector<float> default_distances(num_joints, max_half_diagonal);
+                    std::vector<std::vector<float>>  distances(num_joints, default_distances);
+                    organizeRoi(frame, frameIndex, bool_left, keyPoints[i], distances, joints, imgJoint, jointsCenter);
+                    humanJoints_right.push_back(joints);
+                    if (!imgJoint.empty())
+                    {
+                        imgHuman_right.push_back(imgJoint);
+                    }
+                    humanJointsCenter_right.push_back(jointsCenter);
+                }
                 //std::cout << "right" << std::endl;
                 /* for every joints */
-                for (int j = 0; j < keyPoints[i].size(); j++)
+                if (!bool_dynamic_roi)
                 {
-                    organize_right(frame, frameIndex, keyPoints[i][j], joints, imgJoint, jointsCenter);
+                    for (int j = 0; j < keyPoints[i].size(); j++)
+                    {
+                        organize_right(frame, frameIndex, keyPoints[i][j], joints, imgJoint, jointsCenter);
+                    }
+                    humanJoints_right.push_back(joints);
+                    if (!imgJoint.empty())
+                    {
+                        imgHuman_right.push_back(imgJoint);
+                    }
+                    humanJointsCenter_right.push_back(jointsCenter);
                 }
-                humanJoints_right.push_back(joints);
-                if (!imgJoint.empty())
-                {
-                    imgHuman_right.push_back(imgJoint);
-                }
-                humanJointsCenter_right.push_back(jointsCenter);
             }
-
         }
         // push data to queue
-        //std::unique_lock<std::mutex> lock(mtxYolo); // exclude other accesses
-        queueYoloSearchRoi_left.push(humanJoints_left);
-        queueYoloSearchRoi_right.push(humanJoints_right);
-        if (!imgHuman_left.empty()) queueYoloOldImgSearch_left.push(imgHuman_left);
-        if (!imgHuman_right.empty()) queueYoloOldImgSearch_right.push(imgHuman_right);
+        //pop before push
+        if (!q_yolo2optflow_left.empty()) q_yolo2optflow_left.pop();
+        if (!q_yolo2optflow_right.empty()) q_yolo2optflow_right.pop();
+        Yolo2optflow left, right;
+        left.roi = humanJoints_left;
+        right.roi = humanJoints_right;
+        if (!imgHuman_left.empty()) left.img_search = imgHuman_left;
+        if (!imgHuman_right.empty()) right.img_search = imgHuman_right;
+        //push and save data
+        q_yolo2optflow_left.push(left);
+        q_yolo2optflow_right.push(right);
         posSaver_left.push_back(humanJointsCenter_left);
         posSaver_right.push_back(humanJointsCenter_right);
+    }
+}
+
+void YOLOPoseBatch::organizeRoi(cv::Mat1b& frame, int& frameIndex, bool& bool_left, std::vector<std::vector<int>>& pos, 
+    std::vector<std::vector<float>>& distances, std::vector<cv::Rect2i>& joints, std::vector<cv::Mat1b>& imgJoint, 
+    std::vector<std::vector<int>>& jointsCenter)
+{
+    //calculate each joints distances -> save into vector
+    //if pos[0] < 0 -> distances is remained
+    float distance;
+    auto start = std::chrono::high_resolution_clock::now();
+    //calculate distance between each joint
+    for (int i = 0; i < pos.size() - 1; i++) //for each joint
+    {
+        if (pos[i][0] > 0)//keypoints found
+        {
+            int j = i + 1;
+            while (j < pos.size()) //calculate distances for each distances
+            {
+                if (pos[j][0] > 0) //keypoints found
+                {
+                    distance = std::pow((std::pow((pos[i][0] - pos[j][0]), 2) + std::pow((pos[i][1] - pos[j][1]), 2)), 0.5); //calculate distance
+                    distances[i][j] = distance; //save distance
+                    distances[j][i] = distance;
+                }
+                j++;
+            }
+        }
+    }
+    //setting roi for each joint
+    for (int i = 0; i < pos.size(); i++)
+    {
+
+        if (pos[i][0] > 0) //found
+        {
+            if (i == 0)//left shoulder
+            {
+                std::vector<int> joints_neighbor{ 1,2 };
+                setRoi(frameIndex, frame, bool_left, distances, i, joints_neighbor, pos, joints, imgJoint, jointsCenter);
+            }
+            else if (i == 1)//right shoulder
+            {
+                std::vector<int> joints_neighbor{ 0,3 };
+                setRoi(frameIndex, frame, bool_left, distances, i, joints_neighbor, pos, joints, imgJoint, jointsCenter);
+            }
+            else if (i == 2)//left elbow
+            {
+                std::vector<int> joints_neighbor{ 0,4 };
+                setRoi(frameIndex, frame, bool_left, distances, i, joints_neighbor, pos, joints, imgJoint, jointsCenter);
+            }
+            else if (i == 3)//right elbow
+            {
+                std::vector<int> joints_neighbor{ 1,5 };
+                setRoi(frameIndex, frame, bool_left, distances, i, joints_neighbor, pos, joints, imgJoint, jointsCenter);
+            }
+            else if (i == 4)//left wrist
+            {
+                std::vector<int> joints_neighbor{ 2, 2 };
+                setRoi(frameIndex, frame, bool_left, distances, i, joints_neighbor, pos, joints, imgJoint, jointsCenter);
+            }
+            else if (i == 5)//right wrist
+            {
+                std::vector<int> joints_neighbor{ 3, 3 };
+                setRoi(frameIndex, frame, bool_left, distances, i, joints_neighbor, pos, joints, imgJoint, jointsCenter);
+            }
+        }
+        else //not found
+        {
+            jointsCenter.push_back({ frameIndex, -1, -1 ,-1,-1 });
+            joints.emplace_back(-1, -1, -1, -1);
+        }
+    }
+    auto stop = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
+    std::cout << "!!!! time taken by setting roi=" << duration.count() << " microseconds !!!!" << std::endl;
+}
+
+void YOLOPoseBatch::setRoi(int& frameIndex, cv::Mat1b& frame, bool& bool_left, std::vector<std::vector<float>>& distances, 
+    int& index_joint, std::vector<int>& compareJoints, std::vector<std::vector<int>>& pos,
+    std::vector<cv::Rect2i>& joints, std::vector<cv::Mat1b>& imgJoint, std::vector<std::vector<int>>& jointsCenter)
+{
+    float vx, vy;
+    auto distance_min = std::min_element(distances[index_joint].begin(), distances[index_joint].end());
+    //std::cout << "minimum distance=" << (float)(*distance_min) << std::endl;
+    float half_diagonal = std::max(min_half_diagonal, ((float)(1.0 - (float)((1.0 - min_ratio) * ((float)(*distance_min) - min_half_diagonal) / (max_half_diagonal - min_half_diagonal))) * (float)(*distance_min)));//calculate half diagonal
+    //std::cout << "half diagonal=" << half_diagonal << std::endl;
+    if (bool_rotate_roi) //rotate roi
+    {
+        if (pos[compareJoints[0]][0] > 0)//right shoulder found
+        {
+            vx = ((float)(pos[compareJoints[0]][0] - pos[index_joint][0])) / distances[index_joint][compareJoints[0]]; //unit direction vector
+            vy = ((float)(pos[compareJoints[0]][1] - pos[index_joint][1])) / distances[index_joint][compareJoints[0]];
+            //std::cout << " first choice found :: unit direction vector: vx=" << vx << ", vy=" << vy << std::endl;
+            if (std::abs(vx) / roi_direction_threshold <= std::abs(vy) && roi_direction_threshold * std::abs(vx) >= std::abs(vy))//withing good region
+            {
+                if (bool_left)  //left
+                    defineRoi_left(frameIndex, frame, index_joint, vx, vy, half_diagonal, pos, joints, imgJoint, jointsCenter);
+                else //right
+                    defineRoi_right(frameIndex, frame, index_joint, vx, vy, half_diagonal, pos, joints, imgJoint, jointsCenter);
+            }
+            else //use default vector
+            {
+                vx = default_neighbor[0];
+                vy = default_neighbor[1];
+                if (bool_left)  //left
+                    defineRoi_left(frameIndex, frame, index_joint, vx, vy, half_diagonal, pos, joints, imgJoint, jointsCenter);
+                else //right
+                    defineRoi_right(frameIndex, frame, index_joint, vx, vy, half_diagonal, pos, joints, imgJoint, jointsCenter);
+            }
+        }
+        else if (pos[compareJoints[0]][0] <= 0 && pos[compareJoints[1]][0] > 0)//right shoulder not found, left elbow found
+        {
+            vx = ((float)(pos[compareJoints[1]][0] - pos[index_joint][0])) / distances[index_joint][compareJoints[1]]; //unit direction vector
+            vy = ((float)(pos[compareJoints[1]][1] - pos[index_joint][1])) / distances[index_joint][compareJoints[1]];
+            //std::cout << " second choice found :: unit direction vector: vx=" << vx << ", vy=" << vy << std::endl;
+            if (std::abs(vx) / roi_direction_threshold <= std::abs(vy) && roi_direction_threshold * std::abs(vx) >= std::abs(vy))//withing good region
+            {
+                if (bool_left)  //left
+                    defineRoi_left(frameIndex, frame, index_joint, vx, vy, half_diagonal, pos, joints, imgJoint, jointsCenter);
+                else //right
+                    defineRoi_right(frameIndex, frame, index_joint, vx, vy, half_diagonal, pos, joints, imgJoint, jointsCenter);
+            }
+            else //uuse default vector
+            {
+                vx = default_neighbor[0];
+                vy = default_neighbor[1];
+                if (bool_left)  //left
+                    defineRoi_left(frameIndex, frame, index_joint, vx, vy, half_diagonal, pos, joints, imgJoint, jointsCenter);
+                else //right
+                    defineRoi_right(frameIndex, frame, index_joint, vx, vy, half_diagonal, pos, joints, imgJoint, jointsCenter);
+            }
+        }
+        else //no neighbors found
+        {
+            //std::cout << "no neightbors :"<< std::endl;
+            vx = default_neighbor[0];
+            vy = default_neighbor[1];
+            if (bool_left)  //left
+                defineRoi_left(frameIndex, frame, index_joint, vx, vy, half_diagonal, pos, joints, imgJoint, jointsCenter);
+            else //right
+                defineRoi_right(frameIndex, frame, index_joint, vx, vy, half_diagonal, pos, joints, imgJoint, jointsCenter);
+        }
+    }
+    else //not rotate roi
+    {
+        //std::cout << "no neightbors :"<< std::endl;
+        vx = default_neighbor[0];
+        vy = default_neighbor[1];
+        if (bool_left)  //left
+            defineRoi_left(frameIndex, frame, index_joint, vx, vy, half_diagonal, pos, joints, imgJoint, jointsCenter);
+        else //right
+            defineRoi_right(frameIndex, frame, index_joint, vx, vy, half_diagonal, pos, joints, imgJoint, jointsCenter);
+    }
+}
+
+void YOLOPoseBatch::defineRoi_left(int& frameIndex, cv::Mat1b& frame, int& index_joint, float& vx, float& vy, 
+    float& half_diagonal, std::vector<std::vector<int>>& pos,
+    std::vector<cv::Rect2i>& joints, std::vector<cv::Mat1b>& imgJoint, std::vector<std::vector<int>>& jointsCenter)
+{
+    float x1, x2, y1, y2; //candidate points for corners of rectangle
+    int left, top, right, bottom; //bbox corners
+    x1 = pos[index_joint][0] + half_diagonal * vx;
+    y1 = pos[index_joint][1] + half_diagonal * vy;
+    x2 = pos[index_joint][0] - half_diagonal * vx;
+    y2 = pos[index_joint][1] - half_diagonal * vy;
+    left = std::min(std::max((int)(std::min(x1, x2)), 0), originalWidth);
+    right = std::max(std::min((int)(std::max(x1, x2)), originalWidth), 0);
+    top = std::min(std::max((int)(std::min(y1, y2)), 0), originalHeight);
+    bottom = std::max(std::min((int)(std::max(y1, y2)), originalHeight), 0);
+    //std::cout << "left=" << left << ", right=" << right << ", top=" << top << ", bottom=" << bottom << std::endl;
+    if ((right - left) > MIN_SEARCH && (bottom - top) > MIN_SEARCH)
+    {
+        cv::Rect2i roi(left, top, right - left, bottom - top);
+        jointsCenter.push_back({ frameIndex, left,top,(right - left),(bottom - top) });
+        joints.push_back(roi);
+        imgJoint.push_back(frame(roi));
+        //std::cout << "||||| YOLO::roi.width = " << roi.width << ", roi.height = " << roi.height << std::endl;
+    }
+    else
+    {
+        jointsCenter.push_back({ frameIndex, -1, -1 ,-1,-1 });
+        joints.emplace_back(-1, -1, -1, -1);
+    }
+}
+
+void YOLOPoseBatch::defineRoi_right(int& frameIndex, cv::Mat1b& frame, int& index_joint, float& vx, float& vy, float& half_diagonal, std::vector<std::vector<int>>& pos,
+    std::vector<cv::Rect2i>& joints, std::vector<cv::Mat1b>& imgJoint, std::vector<std::vector<int>>& jointsCenter)
+{
+    float x1, x2, y1, y2; //candidate points for corners of rectangle
+    int left, top, right, bottom; //bbox corners
+    x1 = pos[index_joint][0] + half_diagonal * vx;
+    y1 = pos[index_joint][1] + half_diagonal * vy;
+    x2 = pos[index_joint][0] - half_diagonal * vx;
+    y2 = pos[index_joint][1] - half_diagonal * vy;
+    left = std::min(std::max((int)(std::min(x1, x2)), 0), originalWidth);
+    right = std::max(std::min((int)(std::max(x1, x2)), originalWidth), 0);
+    top = std::min(std::max((int)(std::min(y1, y2)), 0), originalHeight);
+    bottom = std::max(std::min((int)(std::max(y1, y2)), originalHeight), 0);
+    //std::cout << "left=" << left << ", right=" << right << ", top=" << top << ", bottom=" << bottom << std::endl;
+    if ((right - left) > 0 && (bottom - top) > 0)
+    {
+        cv::Rect2i roi(left, top, right - left, bottom - top);
+        jointsCenter.push_back({ frameIndex, left,top, (right - left),(bottom - top) });
+        joints.push_back(roi);
+        roi.x += originalWidth;
+        imgJoint.push_back(frame(roi));
+        //std::stringstream fileNameStream;
+        //fileNameStream <<"yolo-"<<frameIndex << ".jpg";
+        //std::string fileName = fileNameStream.str();
+        //cv::imwrite(fileName, frame(roi));
+        //std::cout << "||||| YOLO::roi.width = " << roi.width << ", roi.height = " << roi.height << std::endl;
+    }
+    else
+    {
+        jointsCenter.push_back({ frameIndex, -1, -1,-1,-1 });
+        joints.emplace_back(-1, -1, -1, -1);
     }
 }
 
@@ -333,14 +574,18 @@ void YOLOPoseBatch::organize_left(cv::Mat1b& frame, int& frameIndex, std::vector
         int right = std::max(std::min(static_cast<int>(pos[0] + roiWidthYolo / 2), originalWidth), 0);
         int bottom = std::max(std::min(static_cast<int>(pos[1] + roiHeightYolo / 2), originalHeight), 0);
         cv::Rect2i roi(left, top, right - left, bottom - top);
-        jointsCenter.push_back({ frameIndex, pos[0], pos[1] });
+        jointsCenter.push_back({ frameIndex, roi.x,roi.y,roi.width,roi.height });
         joints.push_back(roi);
         imgJoint.push_back(frame(roi));
+        //std::stringstream fileNameStream;
+        //fileNameStream <<"yolo-"<<frameIndex << ".jpg";
+        //std::string fileName = fileNameStream.str();
+        //cv::imwrite(fileName, frame(roi));
     }
     /* keypoints can't be detected */
     else
     {
-        jointsCenter.push_back({ frameIndex, -1, -1 });
+        jointsCenter.push_back({ frameIndex, -1, -1,-1,-1 });
         joints.emplace_back(-1, -1, -1, -1);
     }
 }
@@ -355,14 +600,15 @@ void YOLOPoseBatch::organize_right(cv::Mat1b& frame, int& frameIndex, std::vecto
         int bottom = std::max(std::min(static_cast<int>(pos[1] + roiHeightYolo / 2), originalHeight), 0);
         cv::Rect2i roi(left, top, right - left, bottom - top);
         joints.push_back(roi);
+        jointsCenter.push_back({ frameIndex, roi.x,roi.y,roi.width,roi.height });
         roi.x += originalWidth;
         imgJoint.push_back(frame(roi));
-        jointsCenter.push_back({ frameIndex, pos[0], pos[1] });
+
     }
     /* keypoints can't be detected */
     else
     {
-        jointsCenter.push_back({ frameIndex, -1, -1 });
+        jointsCenter.push_back({ frameIndex, -1, -1,-1,-1 });
         joints.emplace_back(-1, -1, -1, -1);
     }
 }
